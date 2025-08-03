@@ -3,7 +3,7 @@
 const express = require('express');
 const { Client } = require('@notionhq/client');
 const dotenv = require('dotenv');
-const { Configuration, OpenAIApi } = require("openai");
+const OpenAI = require("openai");
 
 dotenv.config();
 
