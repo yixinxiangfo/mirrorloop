@@ -19,7 +19,7 @@ const openai = new OpenAI({
 async function classifyMindFactors(text) {
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // ✅ 変更後, // または gpt-3.5-turbo など、利用可能なモデル
+      model: "gpt-4o", // ✅ 変更後, // または gpt-3.5-turbo など、利用可能なモデル
       messages: [
         {
           role: "system",
