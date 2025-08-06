@@ -2,11 +2,7 @@
 
 const { promptTemplate } = require('./rootDictionary');
 const parseGptOutput = require('./parseGptOutput');
-
-// openaiクライアントのrequireと初期化を削除します。
-// const { OpenAI } = require('openai');
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
+// OpenAIクライアントの初期化を削除
 
 /**
  * LINEから受け取ったメッセージを処理し、観照コメントと心所データを返す
@@ -19,7 +15,7 @@ async function handleUserMessage(userMessage, userId, openaiClient) {
   const prompt = promptTemplate(userMessage);
 
   try {
-    const completion = await openaiClient.chat.completions.create({ // 引数で受け取ったクライアントを使用
+    const completion = await openaiClient.chat.completions.create({
       model: 'gpt-4',
       messages: [
         {

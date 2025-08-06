@@ -46,7 +46,7 @@ async function processEvent(event) {
   const replyToken = event.replyToken;
   const receivedTimestamp = new Date(event.timestamp).toISOString();
 
-  // openaiクライアントを引数として渡す
+  // OpenAIクライアントを引数として渡す
   const response = await handleUserMessage(text, userId, openai);
 
   // LINEに観照コメントを返信
