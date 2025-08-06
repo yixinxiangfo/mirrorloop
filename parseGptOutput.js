@@ -7,23 +7,24 @@ const { enrichMindFactorsWithRoot } = require('./rootDictionary');
  */
 function parseGptOutput(text) {
   try {
-    const raw = JSON.parse(text);
+    // 前後にノイズが混ざってても { ... } 部分だけ抽出
+    const match = text.match(/\{[\s\S]*?\}/);
+    const cleanJson = match ? match[0] : '{}';
+
+    const raw = JSON.parse(cleanJson);
 
     const rawMindFactors = raw["心所"];
-
-    // GPTの出力が配列であることを確認し、そうでない場合は空の配列をデフォルト値とする
     const mindFactorsArray = Array.isArray(rawMindFactors) ? rawMindFactors : [];
 
-    // 三毒 root を追加
     const enriched = enrichMindFactorsWithRoot(mindFactorsArray);
 
     return {
-      mindFactors: enriched, // [{ name: "嫉", root: ["瞋"] }, ...]
+      mindFactors: enriched,
       category: raw["心所分類"] || [],
       comment: raw["コメント"] || ""
     };
   } catch (e) {
-    console.error("GPT出力の解析エラー:", e);
+    console.error("GPT出力の解析エラー:", e, "\n元の出力:", text);
     return {
       mindFactors: [],
       category: [],

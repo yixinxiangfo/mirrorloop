@@ -154,7 +154,10 @@ const promptTemplate = (text) => `あなたは仏教の唯識学派の専門家�
 ・悔（regret）：過去の行いを悔やむ心。
 ・眠（sleep）：心が沈んで眠りに落ちる状態。
 ・尋（inquiry）：心で言葉や意味を探し求める心。
-・伺（investigation）：対象を細かく考察する心。`;
+・伺（investigation）：対象を細かく考察する心。
+
+絶対にJASON形式のみを返してください。他の説明の補足は一切つけないでください。例え前置きでも不要です。`;
+
 
 module.exports = {
   rootDictionary,
