@@ -1,94 +1,42 @@
-// index.js
-
 const express = require('express');
-const { Client } = require('@notionhq/client');
 const dotenv = require('dotenv');
-const OpenAI = require("openai");
 const line = require('@line/bot-sdk');
-const handleUserMessage = require('./handleUserMessage');
+const { Client } = require('@notionhq/client');
+const { OpenAI } = require('openai');
+const { sessionMessageHandler } = require('./sessionMessageHandler');
 
 dotenv.config();
 
+// LINE設定
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-const client = new line.Client(config);
+// クライアント初期化
+const lineClient = new line.Client(config);
+const notionClient = new Client({ auth: process.env.NOTION_TOKEN });
+const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 const app = express();
 app.use(express.json());
 
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Webhook受信エンドポイント
-app.post('/', (req, res) => {
+// ✅ LINE署名検証ミドルウェア
+app.post('/', line.middleware(config), async (req, res) => {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
 
   const events = req.body.events || [];
 
   for (const event of events) {
-    processEvent(event).catch(err =>
-      console.error('❌ 非同期処理エラー:', err)
-    );
+    if (event.type === 'message' && event.message.type === 'text') {
+      await sessionMessageHandler(event, notionClient, openaiClient, lineClient);
+    }
   }
 
-  // LINEの仕様に従い、即時レスポンス
-  res.sendStatus(200);
+  res.sendStatus(200); // 即時200応答（LINE仕様）
 });
 
-// イベントごとの非同期処理本体
-async function processEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') return;
-
-  const text = event.message.text;
-  const userId = event.source.userId;
-  const replyToken = event.replyToken;
-  const receivedTimestamp = new Date(event.timestamp).toISOString();
-
-  // OpenAIクライアントを引数として渡す
-  const response = await handleUserMessage(text, userId, openai);
-
-  // LINEに観照コメントを返信
-  await client.replyMessage(replyToken, {
-    type: 'text',
-    text: response.comment
-  });
-
-  // Notionに記録するプロパティ構築
-  const notionProperties = {
-    "名前": {
-      title: [{ text: { content: text } }]
-    },
-    "タイムスタンプ": {
-      date: { start: receivedTimestamp }
-    },
-    "心所ラベル": {
-      multi_select: response.mindFactors.map(f => ({ name: f.name }))
-    },
-    "三毒": {
-      multi_select: Array.from(new Set(response.mindFactors.flatMap(f => f.root))).map(r => ({ name: r }))
-    },
-    "心所分類": {
-      multi_select: response.category.map(tag => ({ name: tag }))
-    },
-    "心所コメント": {
-      rich_text: [{ text: { content: response.comment } }]
-    }
-  };
-
-  try {
-    await notion.pages.create({
-      parent: { database_id: process.env.NOTION_DATABASE_ID },
-      properties: notionProperties,
-    });
-    console.log('✅ Notion に書き込み完了:', text);
-  } catch (error) {
-    console.error('❌ Notion 書き込みエラー:', error);
-  }
-}
-
-// 既存の app.post('/', ...) の上か下に追加
+// 動作確認用エンドポイント
 app.get('/', (req, res) => {
   res.send('🧘 MirrorLoop is awake');
 });
