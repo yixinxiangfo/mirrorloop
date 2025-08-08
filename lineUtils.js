@@ -1,12 +1,121 @@
 // lineUtils.js
 
-// ✅ axiosを削除し、lineClientを引数として受け取るように修正
+/**
+ * 複数のテキストメッセージを1回のreplyで送信
+ * replyTokenは1回のみ使用可能なため、複数メッセージは配列で送信
+ * @param {Object} lineClient - LINEクライアント
+ * @param {string} replyToken - 応答トークン（1回のみ使用可能）
+ * @param {string[]} texts - 送信するテキストの配列
+ */
+async function replyMessages(lineClient, replyToken, texts) {
+  try {
+    if (!texts || texts.length === 0) {
+      console.warn('⚠️ No messages to reply');
+      return;
+    }
+    
+    // テキストメッセージオブジェクトの配列を作成
+    const messages = texts.map(text => ({
+      type: 'text',
+      text: text
+    }));
+    
+    console.log(`📤 Replying with ${messages.length} messages`);
+    
+    await lineClient.replyMessage(replyToken, messages);
+    console.log('✅ Reply messages sent successfully');
+    
+  } catch (error) {
+    console.error('❌ Reply messages error:', {
+      error: error.message,
+      stack: error.stack,
+      replyToken,
+      messageCount: texts?.length
+    });
+    throw error;
+  }
+}
+
+/**
+ * 単一のテキストメッセージをreplyで送信（後方互換性用）
+ * @param {Object} lineClient - LINEクライアント
+ * @param {string} replyToken - 応答トークン
+ * @param {string} text - 送信するテキスト
+ */
 async function replyText(lineClient, replyToken, text) {
-  await lineClient.replyMessage(replyToken, { type: 'text', text });
+  return await replyMessages(lineClient, replyToken, [text]);
 }
 
+/**
+ * プッシュメッセージでテキストを送信
+ * @param {Object} lineClient - LINEクライアント
+ * @param {string} userId - ユーザーID
+ * @param {string} text - 送信するテキスト
+ */
 async function pushText(lineClient, userId, text) {
-  await lineClient.pushMessage(userId, { type: 'text', text });
+  try {
+    if (!text) {
+      console.warn('⚠️ No text to push');
+      return;
+    }
+    
+    console.log(`📤 Pushing message to user: ${userId}`);
+    
+    await lineClient.pushMessage(userId, {
+      type: 'text',
+      text: text
+    });
+    
+    console.log('✅ Push message sent successfully');
+    
+  } catch (error) {
+    console.error('❌ Push message error:', {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      text: text?.substring(0, 50)
+    });
+    throw error;
+  }
 }
 
-module.exports = { replyText, pushText };
+/**
+ * 複数のテキストメッセージをプッシュで送信
+ * @param {Object} lineClient - LINEクライアント
+ * @param {string} userId - ユーザーID
+ * @param {string[]} texts - 送信するテキストの配列
+ */
+async function pushMessages(lineClient, userId, texts) {
+  try {
+    if (!texts || texts.length === 0) {
+      console.warn('⚠️ No messages to push');
+      return;
+    }
+    
+    const messages = texts.map(text => ({
+      type: 'text',
+      text: text
+    }));
+    
+    console.log(`📤 Pushing ${messages.length} messages to user: ${userId}`);
+    
+    await lineClient.pushMessage(userId, messages);
+    console.log('✅ Push messages sent successfully');
+    
+  } catch (error) {
+    console.error('❌ Push messages error:', {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      messageCount: texts?.length
+    });
+    throw error;
+  }
+}
+
+module.exports = {
+  replyMessages,   // 新しい主要関数
+  replyText,       // 後方互換性用
+  pushText,
+  pushMessages
+};
