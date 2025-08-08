@@ -1,13 +1,7 @@
 // processSessionAnswers.js
 
-// const { OpenAI } = require('openai'); // `index.js`で初期化するため、この行は不要
-// const { Client } = require('@notionhq/client'); // `index.js`で初期化するため、この行は不要
-
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
-
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // `index.js`で初期化するため、この行は不要
-// const notion = new Client({ auth: process.env.NOTION_TOKEN }); // `index.js`で初期化するため、この行は不要
 
 async function processSessionAnswers(answers, userId, notionClient, openaiClient) {
   const summaryText = answers.join('\n');
@@ -35,47 +29,46 @@ ${summaryText}
 }
 `;
 
-  // ✅ 引数で受け取ったクライアントを使用
-  const res = await openaiClient.chat.completions.create({
-    model: 'gpt-4',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.5
-  });
-
-  const gptOutput = res.choices[0].message.content;
-  console.log('GPTからの観照応答:', gptOutput);
-
-  const parsed = parseGptOutput(gptOutput);
-  const enrichedFactors = enrichMindFactorsWithRoot(parsed.mindFactors);
-
-  const notionProperties = {
-    "名前": {
-      title: [{ text: { content: summaryText.slice(0, 60) } }]
-    },
-    "タイムスタンプ": {
-      date: { start: new Date().toISOString() }
-    },
-    "心所ラベル": {
-      multi_select: enrichedFactors.map(f => ({ name: f.name }))
-    },
-    "三毒": {
-      multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
-    },
-    "心所分類": {
-      multi_select: parsed.category.map(c => ({ name: c }))
-    },
-    "観照コメント": {
-      rich_text: [{ text: { content: parsed.comment } }]
-    }
-  };
-
   try {
-    // ✅ 引数で受け取ったクライアントを使用
+    const res = await openaiClient.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.5
+    });
+
+    const gptOutput = res.choices[0].message.content;
+    console.log('GPTからの観照応答:', gptOutput);
+
+    const parsed = parseGptOutput(gptOutput);
+    const enrichedFactors = enrichMindFactorsWithRoot(parsed.mindFactors);
+
+    const notionProperties = {
+      "名前": {
+        title: [{ text: { content: summaryText.slice(0, 60) } }]
+      },
+      "タイムスタンプ": {
+        date: { start: new Date().toISOString() }
+      },
+      "心所ラベル": {
+        multi_select: enrichedFactors.map(f => ({ name: f.name }))
+      },
+      "三毒": {
+        multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
+      },
+      "心所分類": {
+        multi_select: parsed.category.map(c => ({ name: c }))
+      },
+      "観照コメント": {
+        rich_text: [{ text: { content: parsed.comment } }]
+      }
+    };
+
     await notionClient.pages.create({
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties: notionProperties,
     });
     console.log("✅ Notionページが正常に作成されました。");
+
   } catch (error) {
     console.error("❌ Notionページ作成エラー:", error.body ? JSON.parse(error.body) : error);
   }
