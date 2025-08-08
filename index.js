@@ -30,7 +30,10 @@ app.post('/', line.middleware(config), async (req, res) => {
   const events = req.body.events || [];
 
   for (const event of events) {
+    // ...（省略）...
+
     if (event.type === 'message' && event.message.type === 'text') {
+      // ✅ こちらに修正
       await sessionMessageHandler(event, notionClient, openaiClient, lineClient);
     }
   }
