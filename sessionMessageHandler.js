@@ -1,3 +1,5 @@
+// sessionMessageHandler.js
+
 const { getSession, createSession, updateSession, clearSession } = require('./sessionStore');
 const questions = require('./questions');
 const { replyText, pushText } = require('./lineUtils');
@@ -11,12 +13,13 @@ const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15分
 function setSessionTimeout(userId, lineClient) {
   clearTimeout(sessionTimeouts[userId]);
   sessionTimeouts[userId] = setTimeout(() => {
-    pushText(userId, "MirrorLoopにお越しいただきありがとうございました。また来てくださいね。", lineClient);
+    pushText(lineClient, userId, "MirrorLoopにお越しいただきありがとうございました。また来てくださいね。");
     clearSession(userId);
     delete sessionTimeouts[userId];
   }, SESSION_TIMEOUT_MS);
 }
 
+// index.jsからクライアントを受け取るように引数を追加
 async function sessionMessageHandler(event, notionClient, openaiClient, lineClient) {
   const userId = event.source.userId;
   const text = event.message.text.trim();
@@ -27,20 +30,22 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
   if (!session && text !== '') {
     createSession(userId);
     setSessionTimeout(userId, lineClient);
-    await replyText(event.replyToken, "ようこそMirrorLoopへ。", lineClient);
-    await replyText(event.replyToken, questions[0], lineClient);
+    // ✅ 引数の順序を修正
+    await replyText(lineClient, event.replyToken, "ようこそMirrorLoopへ。");
+    await replyText(lineClient, event.replyToken, questions[0]);
     return;
   }
 
   if (session && !session.isComplete) {
     setSessionTimeout(userId, lineClient); // 各返信ごとにタイマーリセット
 
-    const classification = await classifyUserResponse(text, openaiClient);
+    // ✅ 引数の順序を修正
+    const classification = await classifyUserResponse(openaiClient, text);
 
     if (classification === "C") {
-      await replyText(event.replyToken,
-        "今回は、あなたの答えから観照の意図を見つけることができませんでした。\nまた改めて、心を見つめたいときにご利用ください。",
-        lineClient
+      // ✅ 引数の順序を修正
+      await replyText(lineClient, event.replyToken,
+        "今回は、あなたの答えから観照の意図を見つけることができませんでした。\nまた改めて、心を見つめたいときにご利用ください。"
       );
       clearSession(userId);
       clearTimeout(sessionTimeouts[userId]);
@@ -49,11 +54,13 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     }
 
     if (classification === "B") {
-      const comment = await generateObservationComment(text, openaiClient);
-      await replyText(event.replyToken, comment, lineClient);
+      // ✅ 引数の順序を修正
+      const comment = await generateObservationComment(openaiClient, text);
+      await replyText(lineClient, event.replyToken, comment);
       // 直前の質問を再提示
       const qIndex = session.currentQuestionIndex;
-      await replyText(event.replyToken, questions[qIndex], lineClient);
+      // ✅ 引数の順序を修正
+      await replyText(lineClient, event.replyToken, questions[qIndex]);
       return;
     }
 
@@ -62,10 +69,13 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     session = getSession(userId);
 
     if (session.currentQuestionIndex < questions.length) {
-      await replyText(event.replyToken, questions[session.currentQuestionIndex], lineClient);
+      // ✅ 引数の順序を修正
+      await replyText(lineClient, event.replyToken, questions[session.currentQuestionIndex]);
     } else {
       session.isComplete = true;
-      await replyText(event.replyToken, "ありがとうございます。観照をまとめます…", lineClient);
+      // ✅ 引数の順序を修正
+      await replyText(lineClient, event.replyToken, "ありがとうございます。観照をまとめます…");
+      // ✅ NotionとOpenAIクライアントを引数として渡す
       await processSessionAnswers(session.answers, userId, notionClient, openaiClient);
       clearSession(userId);
       clearTimeout(sessionTimeouts[userId]);
@@ -73,8 +83,8 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     }
     return;
   }
-
-  await replyText(event.replyToken, "MirrorLoopへようこそ。どんなことでも構いません。まずは感じたことを送ってみてください。", lineClient);
+  // ✅ 引数の順序を修正
+  await replyText(lineClient, event.replyToken, "MirrorLoopへようこそ。どんなことでも構いません。まずは感じたことを送ってみてください。");
 }
 
 module.exports = { sessionMessageHandler };

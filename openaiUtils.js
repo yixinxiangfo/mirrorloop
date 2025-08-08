@@ -1,8 +1,9 @@
 // openaiUtils.js
-const OpenAI = require("openai");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function classifyUserResponse(text) {
+// const OpenAI = require("openai"); // `index.js`で初期化するため、この行は不要
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // `index.js`で初期化するため、この行は不要
+
+async function classifyUserResponse(openaiClient, text) {
   const prompt = `
 ユーザーの発言を以下の3つに分類してください：
 A. 観照問いに対する誠実な回答
@@ -14,7 +15,8 @@ C. 逸脱・意味不明・ふざけた回答（観照に値しない）
 → 回答：A / B / C のいずれかのみを出力してください。
   `;
 
-  const res = await openai.chat.completions.create({
+  // ✅ 引数で受け取ったクライアントを使用
+  const res = await openaiClient.chat.completions.create({
     model: 'gpt-4',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3
@@ -23,7 +25,7 @@ C. 逸脱・意味不明・ふざけた回答（観照に値しない）
   return res.choices[0].message.content.trim();
 }
 
-async function generateObservationComment(text) {
+async function generateObservationComment(openaiClient, text) {
   const prompt = `
 あなたは仏教的観照Botです。以下のような問い返しに対し、
 慰めや励ましではなく、気づきを促す静かな一言を返してください。
@@ -35,7 +37,8 @@ async function generateObservationComment(text) {
 - 「どう言えばよかったか」を探す前に、まず今のあなたの心の動きに目を向けてみましょう。
   `;
 
-  const res = await openai.chat.completions.create({
+  // ✅ 引数で受け取ったクライアントを使用
+  const res = await openaiClient.chat.completions.create({
     model: 'gpt-4',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.7

@@ -1,3 +1,5 @@
+// index.js
+
 const express = require('express');
 const dotenv = require('dotenv');
 const line = require('@line/bot-sdk');
@@ -21,7 +23,7 @@ const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const app = express();
 app.use(express.json());
 
-// ✅ LINE署名検証ミドルウェア
+// LINE署名検証ミドルウェア
 app.post('/', line.middleware(config), async (req, res) => {
   console.log('📬 Webhook received:', JSON.stringify(req.body, null, 2));
 

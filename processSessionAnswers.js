@@ -1,13 +1,15 @@
 // processSessionAnswers.js
-const { OpenAI } = require('openai');
-const { Client } = require('@notionhq/client');
+
+// const { OpenAI } = require('openai'); // `index.js`で初期化するため、この行は不要
+// const { Client } = require('@notionhq/client'); // `index.js`で初期化するため、この行は不要
+
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // `index.js`で初期化するため、この行は不要
+// const notion = new Client({ auth: process.env.NOTION_TOKEN }); // `index.js`で初期化するため、この行は不要
 
-async function processSessionAnswers(answers, userId) {
+async function processSessionAnswers(answers, userId, notionClient, openaiClient) {
   const summaryText = answers.join('\n');
 
   const prompt = `
@@ -33,7 +35,8 @@ ${summaryText}
 }
 `;
 
-  const res = await openai.chat.completions.create({
+  // ✅ 引数で受け取ったクライアントを使用
+  const res = await openaiClient.chat.completions.create({
     model: 'gpt-4',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5
@@ -59,21 +62,22 @@ ${summaryText}
       multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
     },
     "心所分類": {
-      multi_select: parsed.category.map(tag => ({ name: tag }))
+      multi_select: parsed.category.map(c => ({ name: c }))
     },
-    "心所コメント": {
+    "観照コメント": {
       rich_text: [{ text: { content: parsed.comment } }]
     }
   };
 
   try {
-    await notion.pages.create({
+    // ✅ 引数で受け取ったクライアントを使用
+    await notionClient.pages.create({
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties: notionProperties,
     });
-    console.log('✅ Notion に観照結果を保存しました');
+    console.log("✅ Notionページが正常に作成されました。");
   } catch (error) {
-    console.error('❌ Notion 保存エラー:', error.message);
+    console.error("❌ Notionページ作成エラー:", error.body ? JSON.parse(error.body) : error);
   }
 }
 
