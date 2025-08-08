@@ -3,6 +3,7 @@
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
 
+// ✅ クライアントの初期化を削除
 async function processSessionAnswers(answers, userId, notionClient, openaiClient) {
   const summaryText = answers.join('\n');
 
@@ -30,6 +31,7 @@ ${summaryText}
 `;
 
   try {
+    // ✅ 引数で受け取ったopenaiClientを使用
     const res = await openaiClient.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
@@ -63,6 +65,7 @@ ${summaryText}
       }
     };
 
+    // ✅ 引数で受け取ったnotionClientを使用
     await notionClient.pages.create({
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties: notionProperties,

@@ -1,5 +1,6 @@
 // lineUtils.js
 
+// ✅ axiosを削除し、lineClientを引数として受け取るように修正
 async function replyText(lineClient, replyToken, text) {
   await lineClient.replyMessage(replyToken, { type: 'text', text });
 }

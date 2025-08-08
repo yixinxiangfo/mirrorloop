@@ -1,9 +1,6 @@
 // openaiUtils.js
 
-// ➡ `index.js`で初期化するため、以下の行は不要
-// const OpenAI = require("openai"); 
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
-
+// ✅ グローバルなOpenAIクライアントの初期化を削除
 async function classifyUserResponse(openaiClient, text) {
   const prompt = `
 ユーザーの発言を以下の3つに分類してください：
@@ -16,7 +13,7 @@ C. 逸脱・意味不明・ふざけた回答（観照に値しない）
 → 回答：A / B / C のいずれかのみを出力してください。
   `;
 
-  // ✅ 引数で受け取ったクライアントを使用
+  // ✅ 引数で受け取ったopenaiClientを使用
   const res = await openaiClient.chat.completions.create({
     model: 'gpt-4',
     messages: [{ role: 'user', content: prompt }],
@@ -38,7 +35,7 @@ async function generateObservationComment(openaiClient, text) {
 - 「どう言えばよかったか」を探す前に、まず今のあなたの心の動きに目を向けてみましょう。
   `;
 
-  // ✅ 引数で受け取ったクライアントを使用
+  // ✅ 引数で受け取ったopenaiClientを使用
   const res = await openaiClient.chat.completions.create({
     model: 'gpt-4',
     messages: [{ role: 'user', content: prompt }],
