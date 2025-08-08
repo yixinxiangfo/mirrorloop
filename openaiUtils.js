@@ -1,7 +1,8 @@
 // openaiUtils.js
 
-// const OpenAI = require("openai"); // `index.js`で初期化するため、この行は不要
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // `index.js`で初期化するため、この行は不要
+// ➡ `index.js`で初期化するため、以下の行は不要
+// const OpenAI = require("openai"); 
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 
 async function classifyUserResponse(openaiClient, text) {
   const prompt = `

@@ -30,7 +30,6 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
   if (!session && text !== '') {
     createSession(userId);
     setSessionTimeout(userId, lineClient);
-    // ✅ 引数の順序を修正
     await replyText(lineClient, event.replyToken, "ようこそMirrorLoopへ。");
     await replyText(lineClient, event.replyToken, questions[0]);
     return;
@@ -39,11 +38,10 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
   if (session && !session.isComplete) {
     setSessionTimeout(userId, lineClient); // 各返信ごとにタイマーリセット
 
-    // ✅ 引数の順序を修正
+    // ✅ OpenAIクライアントを引数として渡す
     const classification = await classifyUserResponse(openaiClient, text);
 
     if (classification === "C") {
-      // ✅ 引数の順序を修正
       await replyText(lineClient, event.replyToken,
         "今回は、あなたの答えから観照の意図を見つけることができませんでした。\nまた改めて、心を見つめたいときにご利用ください。"
       );
@@ -54,12 +52,11 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     }
 
     if (classification === "B") {
-      // ✅ 引数の順序を修正
+      // ✅ OpenAIクライアントを引数として渡す
       const comment = await generateObservationComment(openaiClient, text);
       await replyText(lineClient, event.replyToken, comment);
       // 直前の質問を再提示
       const qIndex = session.currentQuestionIndex;
-      // ✅ 引数の順序を修正
       await replyText(lineClient, event.replyToken, questions[qIndex]);
       return;
     }
@@ -69,13 +66,10 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     session = getSession(userId);
 
     if (session.currentQuestionIndex < questions.length) {
-      // ✅ 引数の順序を修正
       await replyText(lineClient, event.replyToken, questions[session.currentQuestionIndex]);
     } else {
       session.isComplete = true;
-      // ✅ 引数の順序を修正
       await replyText(lineClient, event.replyToken, "ありがとうございます。観照をまとめます…");
-      // ✅ NotionとOpenAIクライアントを引数として渡す
       await processSessionAnswers(session.answers, userId, notionClient, openaiClient);
       clearSession(userId);
       clearTimeout(sessionTimeouts[userId]);
@@ -83,7 +77,6 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     }
     return;
   }
-  // ✅ 引数の順序を修正
   await replyText(lineClient, event.replyToken, "MirrorLoopへようこそ。どんなことでも構いません。まずは感じたことを送ってみてください。");
 }
 
