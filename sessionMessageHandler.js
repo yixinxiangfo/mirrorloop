@@ -204,7 +204,7 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
         
         // 非同期でNotion処理を実行（OpenAI呼び出しを含む）
         console.log('🔄 Starting processSessionAnswers...');
-        processSessionAnswers(session.answers, userId, notionClient, openaiClient)
+        processSessionAnswers(session.answers, userId, notionClient, openaiClient, lineClient)
           .then(() => {
             console.log('✅ processSessionAnswers completed successfully');
             return pushText(lineClient, userId, "観照セッションが完了しました。また心を見つめたいときにお声がけください。");

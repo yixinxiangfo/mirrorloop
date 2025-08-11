@@ -1,11 +1,14 @@
-// processSessionAnswers.js
+// processSessionAnswers.js（緊急修復版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
+const { pushText } = require('./lineUtils');
 
-// ✅ クライアントの初期化を削除
-async function processSessionAnswers(answers, userId, notionClient, openaiClient) {
+async function processSessionAnswers(answers, userId, notionClient, openaiClient, lineClient) {
   const summaryText = answers.join('\n');
+  
+  console.log('🔄 Processing session answers for user:', userId.substring(0, 8) + '...');
+  console.log('📝 Answers summary:', summaryText.substring(0, 200) + '...');
 
   const prompt = `
 以下は、ある人物の観照セッションでの9つの回答です。
@@ -31,7 +34,9 @@ ${summaryText}
 `;
 
   try {
-    // ✅ 引数で受け取ったopenaiClientを使用
+    console.log('🤖 Calling OpenAI for observation analysis...');
+    
+    // OpenAIで観照分析を実行
     const res = await openaiClient.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
@@ -39,41 +44,93 @@ ${summaryText}
     });
 
     const gptOutput = res.choices[0].message.content;
-    console.log('GPTからの観照応答:', gptOutput);
+    console.log('🎯 GPT観照応答受信:', gptOutput.substring(0, 200) + '...');
 
+    // GPT出力を解析
     const parsed = parseGptOutput(gptOutput);
-    const enrichedFactors = enrichMindFactorsWithRoot(parsed.mindFactors);
-
-    const notionProperties = {
-      "名前": {
-        title: [{ text: { content: summaryText.slice(0, 60) } }]
-      },
-      "タイムスタンプ": {
-        date: { start: new Date().toISOString() }
-      },
-      "心所ラベル": {
-        multi_select: enrichedFactors.map(f => ({ name: f.name }))
-      },
-      "三毒": {
-        multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
-      },
-      "心所分類": {
-        multi_select: parsed.category.map(c => ({ name: c }))
-      },
-      "観照コメント": {
-        rich_text: [{ text: { content: parsed.comment } }]
-      }
-    };
-
-    // ✅ 引数で受け取ったnotionClientを使用
-    await notionClient.pages.create({
-      parent: { database_id: process.env.NOTION_DATABASE_ID },
-      properties: notionProperties,
+    console.log('📊 解析結果:', {
+      hasComment: !!parsed.comment,
+      mindFactorsCount: parsed.mindFactors.length,
+      categoriesCount: parsed.category.length
     });
-    console.log("✅ Notionページが正常に作成されました。");
 
-  } catch (error) {
-    console.error("❌ Notionページ作成エラー:", error.body ? JSON.parse(error.body) : error);
+    // 🔧 重要：まずユーザーに観照コメントを送信（Notion処理より優先）
+    if (parsed.comment) {
+      console.log('📤 Sending observation comment to user...');
+      
+      await pushText(lineClient, userId, 
+        `【観照の結果】\n\n${parsed.comment}\n\n今回の心の動きから、このような気づきが得られました。`
+      );
+      
+      console.log('✅ Observation comment sent successfully');
+    } else {
+      console.warn('⚠️ No comment generated, sending fallback message');
+      
+      await pushText(lineClient, userId, 
+        `【観照の結果】\n\n今回のセッションを通じて、あなたの心の動きを見つめることができました。\n\n継続的な観照により、より深い洞察が得られるでしょう。`
+      );
+    }
+
+    // 🔧 Notion保存は別途試行（失敗してもユーザー体験に影響しない）
+    try {
+      console.log('💾 Attempting to save to Notion...');
+      
+      const enrichedFactors = enrichMindFactorsWithRoot(parsed.mindFactors);
+      
+      const notionProperties = {
+        "名前": {
+          title: [{ text: { content: summaryText.slice(0, 60) } }]
+        },
+        "タイムスタンプ": {
+          date: { start: new Date().toISOString() }
+        },
+        "心所ラベル": {
+          multi_select: enrichedFactors.map(f => ({ name: f.name }))
+        },
+        "三毒": {
+          multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
+        },
+        "心所分類": {
+          multi_select: parsed.category.map(c => ({ name: c }))
+        },
+        "観照コメント": {
+          rich_text: [{ text: { content: parsed.comment || '観照コメント生成エラー' } }]
+        }
+      };
+
+      await notionClient.pages.create({
+        parent: { database_id: process.env.NOTION_DATABASE_ID },
+        properties: notionProperties,
+      });
+      
+      console.log("✅ Notion保存成功");
+      
+      // Notion保存成功時は追加情報も送信
+      await pushText(lineClient, userId, 
+        `観照記録をデータベースに保存しました。\n\n継続的な自己観照により、心の傾向をより深く理解できるようになります。`
+      );
+      
+    } catch (notionError) {
+      console.error("❌ Notion保存エラー:", notionError.message);
+      console.error("詳細:", notionError.body ? JSON.parse(notionError.body) : notionError);
+      
+      // Notion失敗は内部ログのみ（ユーザーには通知しない）
+      // ユーザーには既に観照コメントが送信済みなので問題なし
+    }
+
+  } catch (openaiError) {
+    console.error("❌ OpenAI観照分析エラー:", openaiError.message);
+    
+    // OpenAI失敗時はフォールバック観照コメントを送信
+    try {
+      await pushText(lineClient, userId, 
+        `【観照の結果】\n\n技術的な問題により詳細な分析ができませんでしたが、あなたが9つの問いに向き合い、自分の心を見つめたこと自体に大きな意味があります。\n\n内省の時間を持ったあなたを称賛します。`
+      );
+      
+      console.log('✅ Fallback message sent');
+    } catch (fallbackError) {
+      console.error("❌ フォールバックメッセージ送信失敗:", fallbackError.message);
+    }
   }
 }
 
