@@ -1,4 +1,4 @@
-// processSessionAnswers.js（緊急修復版）
+// processSessionAnswers.js（安全版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
@@ -8,93 +8,109 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
   const summaryText = answers.join('\n');
   
   console.log('🔄 Processing session answers for user:', userId.substring(0, 8) + '...');
-  console.log('📝 Answers summary:', summaryText.substring(0, 200) + '...');
+  console.log('📝 Total answers:', answers.length);
+  console.log('📏 Summary length:', summaryText.length, 'characters');
+  
+  // 🔧 文字数制限チェック（OpenAI安全対策）
+  if (summaryText.length > 3000) {
+    console.warn('⚠️ Summary too long, truncating...');
+    const truncatedSummary = summaryText.substring(0, 2800) + '...（以下省略）';
+    console.log('📏 Truncated to:', truncatedSummary.length, 'characters');
+  }
 
-  const prompt = `
-以下は、ある人物の観照セッションでの9つの回答です。
-この回答をもとに、以下を出力してください：
+  // 🔧 短縮・安全なプロンプト
+  const safeSummary = summaryText.length > 3000 ? 
+    summaryText.substring(0, 2800) + '...（以下省略）' : 
+    summaryText;
 
-1. 観照コメント（内面への気づきを促す短い一言）
-2. 心所ラベル（五十一心所の中から該当するもの）
-3. 心所分類（善・煩悩・随煩悩など）
-4. 三毒（貪・瞋・痴）
+  const prompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
 
-観照セッション：
-${summaryText}
+観照セッション回答：
+${safeSummary}
 
-出力形式：
+以下のJSON形式で出力してください：
 {
-  "comment": "...",
-  "mindFactors": [
-    { "name": "無慚", "root": ["痴"] },
-    ...
-  ],
-  "category": ["随煩悩", "煩悩"]
-}
-`;
+  "comment": "内面への気づきを促す短いコメント（100文字以内）"
+}`;
 
   try {
-    console.log('🤖 Calling OpenAI for observation analysis...');
+    console.log('🤖 Calling OpenAI...');
+    console.log('📏 Prompt length:', prompt.length, 'characters');
     
-    // OpenAIで観照分析を実行
+    // 🔧 OpenAI呼び出しのタイムアウト対策
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒タイムアウト
+    
     const res = await openaiClient.chat.completions.create({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.5
+      model: 'gpt-4o-mini', // 🔧 より軽量で安定したモデル
+      messages: [{ 
+        role: 'user', 
+        content: prompt 
+      }],
+      temperature: 0.3, // 🔧 より安定した出力
+      max_tokens: 500,   // 🔧 出力制限
+    }, {
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
+    console.log('✅ OpenAI response received');
 
     const gptOutput = res.choices[0].message.content;
-    console.log('🎯 GPT観照応答受信:', gptOutput.substring(0, 200) + '...');
+    console.log('🎯 GPT raw output:', gptOutput);
 
-    // GPT出力を解析
-    const parsed = parseGptOutput(gptOutput);
-    console.log('📊 解析結果:', {
-      hasComment: !!parsed.comment,
-      mindFactorsCount: parsed.mindFactors.length,
-      categoriesCount: parsed.category.length
-    });
+    // 🔧 安全なJSON解析
+    let observationComment;
+    try {
+      // JSON部分を抽出
+      const jsonMatch = gptOutput.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        observationComment = jsonData.comment || null;
+      } else {
+        console.warn('⚠️ No JSON found in output, using raw text');
+        observationComment = gptOutput.trim();
+      }
+    } catch (parseError) {
+      console.warn('⚠️ JSON parse failed, using raw output:', parseError.message);
+      observationComment = gptOutput.trim();
+    }
 
-    // 🔧 重要：まずユーザーに観照コメントを送信（Notion処理より優先）
-    if (parsed.comment) {
-      console.log('📤 Sending observation comment to user...');
+    console.log('📝 Final comment:', observationComment);
+
+    // 🔧 観照コメントの送信
+    if (observationComment && observationComment.length > 10) {
+      console.log('📤 Sending observation comment...');
       
       await pushText(lineClient, userId, 
-        `【観照の結果】\n\n${parsed.comment}\n\n今回の心の動きから、このような気づきが得られました。`
+        `【観照の結果】\n\n${observationComment}\n\n今回の内省を通じて、新たな気づきを得ることができました。`
       );
       
       console.log('✅ Observation comment sent successfully');
     } else {
-      console.warn('⚠️ No comment generated, sending fallback message');
+      console.warn('⚠️ Generated comment too short or empty, sending fallback');
       
       await pushText(lineClient, userId, 
-        `【観照の結果】\n\n今回のセッションを通じて、あなたの心の動きを見つめることができました。\n\n継続的な観照により、より深い洞察が得られるでしょう。`
+        `【観照の結果】\n\n9つの問いを通じて、あなた自身の心の動きを深く見つめることができました。\n\n継続的な観照により、より深い自己理解が得られるでしょう。`
       );
     }
 
-    // 🔧 Notion保存は別途試行（失敗してもユーザー体験に影響しない）
+    // 🔧 Notion保存（簡略版）
     try {
-      console.log('💾 Attempting to save to Notion...');
-      
-      const enrichedFactors = enrichMindFactorsWithRoot(parsed.mindFactors);
+      console.log('💾 Attempting simplified Notion save...');
       
       const notionProperties = {
         "名前": {
-          title: [{ text: { content: summaryText.slice(0, 60) } }]
+          title: [{ text: { content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}` } }]
         },
         "タイムスタンプ": {
           date: { start: new Date().toISOString() }
         },
-        "心所ラベル": {
-          multi_select: enrichedFactors.map(f => ({ name: f.name }))
-        },
-        "三毒": {
-          multi_select: Array.from(new Set(enrichedFactors.flatMap(f => f.root))).map(r => ({ name: r }))
-        },
-        "心所分類": {
-          multi_select: parsed.category.map(c => ({ name: c }))
-        },
         "観照コメント": {
-          rich_text: [{ text: { content: parsed.comment || '観照コメント生成エラー' } }]
+          rich_text: [{ text: { content: observationComment || 'コメント生成エラー' } }]
+        },
+        "回答数": {
+          number: answers.length
         }
       };
 
@@ -103,33 +119,39 @@ ${summaryText}
         properties: notionProperties,
       });
       
-      console.log("✅ Notion保存成功");
-      
-      // Notion保存成功時は追加情報も送信
-      await pushText(lineClient, userId, 
-        `観照記録をデータベースに保存しました。\n\n継続的な自己観照により、心の傾向をより深く理解できるようになります。`
-      );
+      console.log("✅ Simplified Notion save successful");
       
     } catch (notionError) {
-      console.error("❌ Notion保存エラー:", notionError.message);
-      console.error("詳細:", notionError.body ? JSON.parse(notionError.body) : notionError);
-      
-      // Notion失敗は内部ログのみ（ユーザーには通知しない）
-      // ユーザーには既に観照コメントが送信済みなので問題なし
+      console.error("❌ Notion save failed:", notionError.message);
+      // Notion失敗は無視（ユーザーには影響しない）
     }
 
   } catch (openaiError) {
-    console.error("❌ OpenAI観照分析エラー:", openaiError.message);
+    console.error("❌ OpenAI error details:", {
+      message: openaiError.message,
+      type: openaiError.type,
+      code: openaiError.code,
+      status: openaiError.status
+    });
     
-    // OpenAI失敗時はフォールバック観照コメントを送信
+    // 🔧 エラータイプ別の対応
+    let errorMessage;
+    if (openaiError.message.includes('rate limit')) {
+      errorMessage = 'AI分析サービスが混雑しています。少し時間をおいてから再度お試しください。';
+    } else if (openaiError.message.includes('timeout')) {
+      errorMessage = '分析に時間がかかりすぎました。ネットワーク状況をご確認ください。';
+    } else {
+      errorMessage = 'AI分析中に技術的な問題が発生しました。';
+    }
+    
     try {
       await pushText(lineClient, userId, 
-        `【観照の結果】\n\n技術的な問題により詳細な分析ができませんでしたが、あなたが9つの問いに向き合い、自分の心を見つめたこと自体に大きな意味があります。\n\n内省の時間を持ったあなたを称賛します。`
+        `【観照の結果】\n\n${errorMessage}\n\nしかし、9つの問いに真摯に向き合い、自分の心を見つめたことに大きな価値があります。この内省の時間そのものが、あなたの成長につながっています。`
       );
       
-      console.log('✅ Fallback message sent');
+      console.log('✅ Error fallback message sent');
     } catch (fallbackError) {
-      console.error("❌ フォールバックメッセージ送信失敗:", fallbackError.message);
+      console.error("❌ Fallback message failed:", fallbackError.message);
     }
   }
 }
