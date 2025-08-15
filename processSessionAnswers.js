@@ -33,6 +33,8 @@ ${safeSummary}
   "comment": "内面への気づきを促す短いコメント（100文字以内）"
 }`;
 
+  let observationComment = null; // 🔧 変数を外側で定義
+
   try {
     console.log('🤖 Calling OpenAI...');
     console.log('📏 Prompt length:', prompt.length, 'characters');
@@ -60,7 +62,6 @@ ${safeSummary}
     console.log('🎯 GPT raw output:', gptOutput);
 
     // 🔧 安全なJSON解析
-    let observationComment;
     try {
       // JSON部分を抽出
       const jsonMatch = gptOutput.match(/\{[\s\S]*?\}/);
@@ -95,37 +96,6 @@ ${safeSummary}
       );
     }
 
-    // 🔧 Notion保存（簡略版）
-    try {
-      console.log('💾 Attempting simplified Notion save...');
-      
-      const notionProperties = {
-        "名前": {
-          title: [{ text: { content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}` } }]
-        },
-        "タイムスタンプ": {
-          date: { start: new Date().toISOString() }
-        },
-        "観照コメント": {
-          rich_text: [{ text: { content: observationComment || 'コメント生成エラー' } }]
-        },
-        "回答数": {
-          number: answers.length
-        }
-      };
-
-      await notionClient.pages.create({
-        parent: { database_id: process.env.NOTION_DATABASE_ID },
-        properties: notionProperties,
-      });
-      
-      console.log("✅ Simplified Notion save successful");
-      
-    } catch (notionError) {
-      console.error("❌ Notion save failed:", notionError.message);
-      // Notion失敗は無視（ユーザーには影響しない）
-    }
-
   } catch (openaiError) {
     console.error("❌ OpenAI error details:", {
       message: openaiError.message,
@@ -153,6 +123,34 @@ ${safeSummary}
     } catch (fallbackError) {
       console.error("❌ Fallback message failed:", fallbackError.message);
     }
+  }
+
+  // 🔧 Supabase保存（OpenAIの処理とは独立）
+  try {
+    console.log('💾 Attempting Supabase save...');
+    
+    const supabase = require('./supabaseClient');
+    
+    const { data, error } = await supabase
+      .from('mind_observations')
+      .insert({
+        line_user_id: userId,
+        message_content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}`,
+        observation_comment: observationComment || 'コメント生成エラー',
+        mind_factors: [], // 観照セッションでは心所分析なし
+        mind_categories: [],
+        three_poisons: []
+      });
+
+    if (error) {
+      console.error("❌ Supabase save failed:", error.message);
+    } else {
+      console.log("✅ Supabase save successful");
+    }
+    
+  } catch (supabaseError) {
+    console.error("❌ Supabase save failed:", supabaseError.message);
+    // Supabase失敗は無視（ユーザーには影響しない）
   }
 }
 
