@@ -1,5 +1,5 @@
 // supabaseClient.js
-require('dotenv').config(); // 🔧 これを追加
+require('dotenv').config();
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -17,4 +17,5 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 console.log('✅ Supabase client initialized');
 
+// 🔧 修正：直接exportする形式に変更
 module.exports = supabase;

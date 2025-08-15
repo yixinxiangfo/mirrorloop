@@ -1,4 +1,4 @@
-// processSessionAnswers.js（安全版）
+// processSessionAnswers.js（Supabaseクライアント修正版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
@@ -129,6 +129,7 @@ ${safeSummary}
   try {
     console.log('💾 Attempting Supabase save...');
     
+    // 🔧 修正：正しいimport形式
     const supabase = require('./supabaseClient');
     
     const { data, error } = await supabase
@@ -145,7 +146,7 @@ ${safeSummary}
     if (error) {
       console.error("❌ Supabase save failed:", error.message);
     } else {
-      console.log("✅ Supabase save successful");
+      console.log("✅ Supabase save successful:", data);
     }
     
   } catch (supabaseError) {
