@@ -1,4 +1,4 @@
-// processSessionAnswers.js（プロンプト内容変更なし版）
+// processSessionAnswers.js（個別心所分析版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
@@ -18,14 +18,15 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
     summaryText;
 
   let observationComment = null;
-  let mindFactors = [];
-  let mindCategories = [];
-  let threePoisons = [];
+  let individualAnalysis = [];
+  let allMindFactors = [];
+  let allMindCategories = [];
+  let allThreePoisons = [];
 
   try {
     console.log('🤖 Calling OpenAI for observation comment...');
     
-    // 🔧 元の観照コメント生成プロンプト
+    // 🔧 元の観照コメント生成プロンプト（全体を使用）
     const commentPrompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
 
 観照セッション回答：
@@ -65,34 +66,104 @@ ${safeSummary}
 
     console.log('📝 Generated comment:', observationComment);
 
-    // 🔧 心所分析（元のpromptTemplateをそのまま使用）
-    console.log('🤖 Calling OpenAI for mind factor analysis...');
+    // 🔧 特定の回答のみ心所分析（1, 2, 4, 5, 6, 7）
+    const targetAnswerIndices = [1, 2, 4, 5, 6, 7]; // 分析対象の回答番号
+    console.log('🔍 === 個別心所分析開始（対象: 回答1,2,4,5,6,7のみ）===');
     
-    const mindAnalysisPrompt = promptTemplate(safeSummary);
+    for (let i = 0; i < answers.length; i++) {
+      const answer = answers[i];
+      const questionIndex = i + 1;
+      
+      // 分析対象の回答かチェック
+      if (!targetAnswerIndices.includes(questionIndex)) {
+        console.log(`⏭️ 回答${questionIndex}: "${answer}" → 分析対象外（スキップ）`);
+        
+        // 分析対象外として記録
+        individualAnalysis.push({
+          questionIndex,
+          answer: answer,
+          mindFactors: [],
+          categories: [],
+          analysisComment: '分析対象外（内省的回答）',
+          skipped: true
+        });
+        continue;
+      }
+      
+      console.log(`🔍 分析中: 回答${questionIndex}: "${answer}"`);
+      
+      try {
+        // 個別の心所分析
+        const mindAnalysisPrompt = promptTemplate(answer);
+        
+        console.log(`🤖 GPT呼び出し ${questionIndex} (${targetAnswerIndices.indexOf(questionIndex) + 1}/${targetAnswerIndices.length})...`);
+        
+        const mindAnalysisRes = await openaiClient.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ 
+            role: 'user', 
+            content: mindAnalysisPrompt 
+          }],
+          temperature: 0.7,
+          max_tokens: 800,
+        });
 
-    const mindAnalysisRes = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ 
-        role: 'user', 
-        content: mindAnalysisPrompt 
-      }],
-      temperature: 0.7,
-      max_tokens: 800,
-    });
+        const mindAnalysisOutput = mindAnalysisRes.choices[0].message.content;
+        console.log(`🎯 回答${questionIndex} GPT出力:`, mindAnalysisOutput);
 
-    const mindAnalysisOutput = mindAnalysisRes.choices[0].message.content;
-    console.log('🎯 Mind analysis GPT output:', mindAnalysisOutput);
-
-    // 🔧 心所分析結果を解析
-    const mindAnalysisResult = parseGptOutput(mindAnalysisOutput);
-    
-    // 心所分析結果を取得
-    mindFactors = mindAnalysisResult.mindFactors || [];
-    mindCategories = mindAnalysisResult.category || [];
+        // 心所分析結果を解析
+        const mindAnalysisResult = parseGptOutput(mindAnalysisOutput);
+        
+        // 個別分析結果を保存
+        const analysis = {
+          questionIndex,
+          answer: answer,
+          mindFactors: mindAnalysisResult.mindFactors || [],
+          categories: mindAnalysisResult.category || [],
+          analysisComment: mindAnalysisResult.comment || ''
+        };
+        
+        individualAnalysis.push(analysis);
+        
+        // 全体の心所・分類を集計
+        analysis.mindFactors.forEach(factor => {
+          if (!allMindFactors.find(f => f.name === factor.name)) {
+            allMindFactors.push(factor);
+          }
+        });
+        
+        analysis.categories.forEach(category => {
+          if (!allMindCategories.includes(category)) {
+            allMindCategories.push(category);
+          }
+        });
+        
+        console.log(`✅ 回答${questionIndex}分析完了:`, {
+          mindFactors: analysis.mindFactors.map(f => f.name),
+          categories: analysis.categories
+        });
+        
+        // API制限を考慮して少し待機
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+      } catch (analysisError) {
+        console.error(`❌ 回答${questionIndex}の分析エラー:`, analysisError.message);
+        
+        // エラーの場合はデフォルト値を設定
+        individualAnalysis.push({
+          questionIndex,
+          answer: answer,
+          mindFactors: [],
+          categories: [],
+          analysisComment: '分析エラー',
+          error: analysisError.message
+        });
+      }
+    }
     
     // 三毒を抽出
     const poisonsSet = new Set();
-    mindFactors.forEach(factor => {
+    allMindFactors.forEach(factor => {
       if (factor.root && Array.isArray(factor.root)) {
         factor.root.forEach(poison => {
           if (['貪', '瞋', '痴'].includes(poison)) {
@@ -101,13 +172,33 @@ ${safeSummary}
         });
       }
     });
-    threePoisons = Array.from(poisonsSet);
+    allThreePoisons = Array.from(poisonsSet);
 
-    console.log('📊 Mind analysis results:', {
-      mindFactors: mindFactors.map(f => f.name),
-      mindCategories,
-      threePoisons
+    console.log('🔍 === 個別心所分析完了（分析対象6回答のみ）===');
+    console.log('📊 Final analysis results:', {
+      totalAnswers: individualAnalysis.length,
+      analyzedAnswers: individualAnalysis.filter(a => !a.skipped).length,
+      skippedAnswers: individualAnalysis.filter(a => a.skipped).length,
+      allMindFactors: allMindFactors.map(f => f.name),
+      allMindCategories,
+      allThreePoisons
     });
+    
+    // 🔧 個別分析結果の詳細ログ
+    console.log('📋 === 個別分析結果詳細 ===');
+    individualAnalysis.forEach(analysis => {
+      console.log(`Q${analysis.questionIndex}: "${analysis.answer}"`);
+      if (analysis.skipped) {
+        console.log(`  → スキップ（分析対象外）`);
+      } else {
+        console.log(`  → 心所: [${analysis.mindFactors.map(f => f.name).join(', ')}]`);
+        console.log(`  → 分類: [${analysis.categories.join(', ')}]`);
+        if (analysis.error) {
+          console.log(`  → エラー: ${analysis.error}`);
+        }
+      }
+    });
+    console.log('================================');
 
     // 🔧 ユーザーには観照コメントのみ送信
     if (observationComment && observationComment.length > 10) {
@@ -155,14 +246,14 @@ ${safeSummary}
     }
   }
 
-  // 🔧 Supabase保存（心所分析結果を含む - 週次レポート用）
+  // 🔧 Supabase保存（個別分析結果も含む）
   try {
     console.log('💾 Attempting Supabase save...');
     
     const supabase = require('./supabaseClient');
     
-    // 心所名のみを配列で保存
-    const mindFactorNames = mindFactors.map(factor => factor.name);
+    // 全体の心所名のみを配列で保存
+    const allMindFactorNames = allMindFactors.map(factor => factor.name);
     
     const { data, error } = await supabase
       .from('mind_observations')
@@ -170,17 +261,19 @@ ${safeSummary}
         line_user_id: userId,
         message_content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}`,
         observation_comment: observationComment || 'コメント生成エラー',
-        mind_factors: mindFactorNames,
-        mind_categories: mindCategories,
-        three_poisons: threePoisons
+        mind_factors: allMindFactorNames,
+        mind_categories: allMindCategories,
+        three_poisons: allThreePoisons,
+        individual_analysis: individualAnalysis  // 個別分析結果も保存
       });
 
     if (error) {
       console.error("❌ Supabase save failed:", error.message);
     } else {
       console.log("✅ Supabase save successful:", data);
-      console.log("📊 Saved mind factors:", mindFactorNames);
-      console.log("📊 Saved three poisons:", threePoisons);
+      console.log("📊 Saved mind factors:", allMindFactorNames);
+      console.log("📊 Saved three poisons:", allThreePoisons);
+      console.log("📊 Saved individual analyses:", individualAnalysis.length);
     }
     
   } catch (supabaseError) {
