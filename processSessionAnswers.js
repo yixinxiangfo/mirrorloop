@@ -1,8 +1,9 @@
-// processSessionAnswers.js（Supabaseクライアント修正版）
+// processSessionAnswers.js（心所分析機能追加版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
 const { pushText } = require('./lineUtils');
+const { promptTemplate } = require('./rootDictionary');
 
 async function processSessionAnswers(answers, userId, notionClient, openaiClient, lineClient) {
   const summaryText = answers.join('\n');
@@ -12,18 +13,62 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
   console.log('📏 Summary length:', summaryText.length, 'characters');
   
   // 🔧 文字数制限チェック（OpenAI安全対策）
-  if (summaryText.length > 3000) {
-    console.warn('⚠️ Summary too long, truncating...');
-    const truncatedSummary = summaryText.substring(0, 2800) + '...（以下省略）';
-    console.log('📏 Truncated to:', truncatedSummary.length, 'characters');
-  }
-
-  // 🔧 短縮・安全なプロンプト
   const safeSummary = summaryText.length > 3000 ? 
     summaryText.substring(0, 2800) + '...（以下省略）' : 
     summaryText;
 
-  const prompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
+  let observationComment = null;
+  let mindFactors = [];
+  let mindCategories = [];
+  let threePoisons = [];
+
+  try {
+    console.log('🤖 Calling OpenAI for mind factor analysis...');
+    
+    // 🔧 観照セッション全体を心所分析用プロンプトで処理
+    const mindAnalysisPrompt = promptTemplate(safeSummary);
+    
+    const mindAnalysisRes = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ 
+        role: 'user', 
+        content: mindAnalysisPrompt 
+      }],
+      temperature: 0.3,
+      max_tokens: 800,
+    });
+
+    const mindAnalysisOutput = mindAnalysisRes.choices[0].message.content;
+    console.log('🎯 Mind analysis GPT output:', mindAnalysisOutput);
+
+    // 🔧 心所分析結果を解析
+    const mindAnalysisResult = parseGptOutput(mindAnalysisOutput);
+    
+    // 心所分析結果を取得
+    mindFactors = mindAnalysisResult.mindFactors || [];
+    mindCategories = mindAnalysisResult.category || [];
+    
+    // 三毒を抽出
+    const poisonsSet = new Set();
+    mindFactors.forEach(factor => {
+      if (factor.root && Array.isArray(factor.root)) {
+        factor.root.forEach(poison => {
+          if (['貪', '瞋', '痴'].includes(poison)) {
+            poisonsSet.add(poison);
+          }
+        });
+      }
+    });
+    threePoisons = Array.from(poisonsSet);
+
+    console.log('📊 Mind analysis results:', {
+      mindFactors: mindFactors.map(f => f.name),
+      mindCategories,
+      threePoisons
+    });
+
+    // 🔧 観照コメント生成（より簡潔なプロンプト）
+    const commentPrompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
 
 観照セッション回答：
 ${safeSummary}
@@ -33,48 +78,33 @@ ${safeSummary}
   "comment": "内面への気づきを促す短いコメント（100文字以内）"
 }`;
 
-  let observationComment = null; // 🔧 変数を外側で定義
-
-  try {
-    console.log('🤖 Calling OpenAI...');
-    console.log('📏 Prompt length:', prompt.length, 'characters');
+    console.log('🤖 Calling OpenAI for observation comment...');
     
-    // 🔧 OpenAI呼び出しのタイムアウト対策
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒タイムアウト
-    
-    const res = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini', // 🔧 より軽量で安定したモデル
+    const commentRes = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
       messages: [{ 
         role: 'user', 
-        content: prompt 
+        content: commentPrompt 
       }],
-      temperature: 0.3, // 🔧 より安定した出力
-      max_tokens: 500,   // 🔧 出力制限
-    }, {
-      signal: controller.signal
+      temperature: 0.3,
+      max_tokens: 500,
     });
 
-    clearTimeout(timeoutId);
-    console.log('✅ OpenAI response received');
+    const commentOutput = commentRes.choices[0].message.content;
+    console.log('🎯 Comment GPT output:', commentOutput);
 
-    const gptOutput = res.choices[0].message.content;
-    console.log('🎯 GPT raw output:', gptOutput);
-
-    // 🔧 安全なJSON解析
+    // 🔧 観照コメントを解析
     try {
-      // JSON部分を抽出
-      const jsonMatch = gptOutput.match(/\{[\s\S]*?\}/);
+      const jsonMatch = commentOutput.match(/\{[\s\S]*?\}/);
       if (jsonMatch) {
         const jsonData = JSON.parse(jsonMatch[0]);
         observationComment = jsonData.comment || null;
       } else {
-        console.warn('⚠️ No JSON found in output, using raw text');
-        observationComment = gptOutput.trim();
+        observationComment = commentOutput.trim();
       }
     } catch (parseError) {
-      console.warn('⚠️ JSON parse failed, using raw output:', parseError.message);
-      observationComment = gptOutput.trim();
+      console.warn('⚠️ Comment JSON parse failed, using raw output:', parseError.message);
+      observationComment = commentOutput.trim();
     }
 
     console.log('📝 Final comment:', observationComment);
@@ -83,9 +113,12 @@ ${safeSummary}
     if (observationComment && observationComment.length > 10) {
       console.log('📤 Sending observation comment...');
       
-      await pushText(lineClient, userId, 
-        `【観照の結果】\n\n${observationComment}\n\n今回の内省を通じて、新たな気づきを得ることができました。`
-      );
+      const mindFactorNames = mindFactors.map(f => f.name).join('、');
+      const poisonText = threePoisons.length > 0 ? `三毒: ${threePoisons.join('、')}` : '';
+      
+      const fullMessage = `【観照の結果】\n\n${observationComment}\n\n検出された心所: ${mindFactorNames || '無し'}\n${poisonText}\n\n今回の内省を通じて、新たな気づきを得ることができました。`;
+      
+      await pushText(lineClient, userId, fullMessage);
       
       console.log('✅ Observation comment sent successfully');
     } else {
@@ -125,12 +158,14 @@ ${safeSummary}
     }
   }
 
-  // 🔧 Supabase保存（OpenAIの処理とは独立）
+  // 🔧 Supabase保存（心所分析結果を含む）
   try {
     console.log('💾 Attempting Supabase save...');
     
-    // 🔧 修正：正しいimport形式
     const supabase = require('./supabaseClient');
+    
+    // 心所名のみを配列で保存
+    const mindFactorNames = mindFactors.map(factor => factor.name);
     
     const { data, error } = await supabase
       .from('mind_observations')
@@ -138,9 +173,9 @@ ${safeSummary}
         line_user_id: userId,
         message_content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}`,
         observation_comment: observationComment || 'コメント生成エラー',
-        mind_factors: [], // 観照セッションでは心所分析なし
-        mind_categories: [],
-        three_poisons: []
+        mind_factors: mindFactorNames,
+        mind_categories: mindCategories,
+        three_poisons: threePoisons
       });
 
     if (error) {
