@@ -1,4 +1,4 @@
-// processSessionAnswers.js（心所分析機能追加版）
+// processSessionAnswers.js（プロンプト内容変更なし版）
 
 const parseGptOutput = require('./parseGptOutput');
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
@@ -23,18 +23,60 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
   let threePoisons = [];
 
   try {
+    console.log('🤖 Calling OpenAI for observation comment...');
+    
+    // 🔧 元の観照コメント生成プロンプト
+    const commentPrompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
+
+観照セッション回答：
+${safeSummary}
+
+以下のJSON形式で出力してください：
+{
+  "comment": "内面への気づきを促す短いコメント（100文字以内）"
+}`;
+
+    const commentRes = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ 
+        role: 'user', 
+        content: commentPrompt 
+      }],
+      temperature: 0.3,
+      max_tokens: 500,
+    });
+
+    const commentOutput = commentRes.choices[0].message.content;
+    console.log('🎯 Comment GPT output:', commentOutput);
+
+    // 🔧 観照コメントを解析
+    try {
+      const jsonMatch = commentOutput.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        observationComment = jsonData.comment || null;
+      } else {
+        observationComment = commentOutput.trim();
+      }
+    } catch (parseError) {
+      console.warn('⚠️ Comment JSON parse failed, using raw output:', parseError.message);
+      observationComment = commentOutput.trim();
+    }
+
+    console.log('📝 Generated comment:', observationComment);
+
+    // 🔧 心所分析（元のpromptTemplateをそのまま使用）
     console.log('🤖 Calling OpenAI for mind factor analysis...');
     
-    // 🔧 観照セッション全体を心所分析用プロンプトで処理
     const mindAnalysisPrompt = promptTemplate(safeSummary);
-    
+
     const mindAnalysisRes = await openaiClient.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ 
         role: 'user', 
         content: mindAnalysisPrompt 
       }],
-      temperature: 0.3,
+      temperature: 0.7,
       max_tokens: 800,
     });
 
@@ -67,58 +109,13 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
       threePoisons
     });
 
-    // 🔧 観照コメント生成（より簡潔なプロンプト）
-    const commentPrompt = `以下の観照セッション回答から、簡潔な観照コメントを作成してください。
-
-観照セッション回答：
-${safeSummary}
-
-以下のJSON形式で出力してください：
-{
-  "comment": "内面への気づきを促す短いコメント（100文字以内）"
-}`;
-
-    console.log('🤖 Calling OpenAI for observation comment...');
-    
-    const commentRes = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ 
-        role: 'user', 
-        content: commentPrompt 
-      }],
-      temperature: 0.3,
-      max_tokens: 500,
-    });
-
-    const commentOutput = commentRes.choices[0].message.content;
-    console.log('🎯 Comment GPT output:', commentOutput);
-
-    // 🔧 観照コメントを解析
-    try {
-      const jsonMatch = commentOutput.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const jsonData = JSON.parse(jsonMatch[0]);
-        observationComment = jsonData.comment || null;
-      } else {
-        observationComment = commentOutput.trim();
-      }
-    } catch (parseError) {
-      console.warn('⚠️ Comment JSON parse failed, using raw output:', parseError.message);
-      observationComment = commentOutput.trim();
-    }
-
-    console.log('📝 Final comment:', observationComment);
-
-    // 🔧 観照コメントの送信
+    // 🔧 ユーザーには観照コメントのみ送信
     if (observationComment && observationComment.length > 10) {
-      console.log('📤 Sending observation comment...');
+      console.log('📤 Sending observation comment only...');
       
-      const mindFactorNames = mindFactors.map(f => f.name).join('、');
-      const poisonText = threePoisons.length > 0 ? `三毒: ${threePoisons.join('、')}` : '';
-      
-      const fullMessage = `【観照の結果】\n\n${observationComment}\n\n検出された心所: ${mindFactorNames || '無し'}\n${poisonText}\n\n今回の内省を通じて、新たな気づきを得ることができました。`;
-      
-      await pushText(lineClient, userId, fullMessage);
+      await pushText(lineClient, userId, 
+        `【観照の結果】\n\n${observationComment}\n\n今回の内省を通じて、新たな気づきを得ることができました。`
+      );
       
       console.log('✅ Observation comment sent successfully');
     } else {
@@ -158,7 +155,7 @@ ${safeSummary}
     }
   }
 
-  // 🔧 Supabase保存（心所分析結果を含む）
+  // 🔧 Supabase保存（心所分析結果を含む - 週次レポート用）
   try {
     console.log('💾 Attempting Supabase save...');
     
@@ -182,6 +179,8 @@ ${safeSummary}
       console.error("❌ Supabase save failed:", error.message);
     } else {
       console.log("✅ Supabase save successful:", data);
+      console.log("📊 Saved mind factors:", mindFactorNames);
+      console.log("📊 Saved three poisons:", threePoisons);
     }
     
   } catch (supabaseError) {
