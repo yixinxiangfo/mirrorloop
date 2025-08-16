@@ -1,8 +1,7 @@
-// sessionMessageHandler.js（デバッグ強化版）
+// sessionMessageHandler.js（修正版 - classification処理完全削除）
 const { getSession, createSession, updateSession, clearSession } = require('./sessionStore');
 const questions = require('./questions');
 const { replyMessages, pushText } = require('./lineUtils');
-const { classifyUserResponse, generateObservationComment } = require('./openaiUtils');
 const processSessionAnswers = require('./processSessionAnswers');
 
 // セッションタイマー管理
@@ -16,19 +15,27 @@ function setSessionTimeout(userId, lineClient) {
   
   sessionTimeouts[userId] = setTimeout(async () => {
     try {
-      await pushText(lineClient, userId, "MirrorLoopにお越しいただきありがとうございました。また来てくださいね。");
+      console.log(`⏰ セッションタイムアウト: ${userId.substring(0, 8)}...`);
+      await pushText(lineClient, userId, 
+        "観照セッションが完了しました。\n\nまた心を見つめたいときにお声がけください。\n\n🙏 ありがとうございました。"
+      );
       clearSession(userId);
       delete sessionTimeouts[userId];
+      console.log(`✅ タイムアウト処理完了: ${userId.substring(0, 8)}...`);
     } catch (error) {
       console.error('❌ Session timeout error:', error);
+      delete sessionTimeouts[userId]; // エラー時もクリーンアップ
     }
   }, SESSION_TIMEOUT_MS);
+  
+  console.log(`⏰ セッションタイマー設定: ${userId.substring(0, 8)}... (15分)`);
 }
 
 function clearSessionTimeout(userId) {
   if (sessionTimeouts[userId]) {
     clearTimeout(sessionTimeouts[userId]);
     delete sessionTimeouts[userId];
+    console.log(`⏹️ セッションタイマー停止: ${userId.substring(0, 8)}...`);
   }
 }
 
@@ -45,15 +52,14 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
   try {
     let session = getSession(userId);
     
-    // 詳細なセッション状態ログ
+    // セッション状態ログ（簡素化）
     console.log('📊 Session state BEFORE processing:', {
       hasSession: !!session,
       sessionData: session ? {
         currentQuestionIndex: session.currentQuestionIndex,
         answersCount: session.answers.length,
-        isComplete: session.isComplete,
-        answers: session.answers.map((ans, i) => `${i}: ${ans.substring(0, 30)}...`)
-      } : 'NO SESSION',
+        isComplete: session.isComplete
+      } : null,
       totalQuestions: questions.length
     });
     
@@ -61,15 +67,15 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     if (!session && text !== '') {
       console.log('🆕 Creating new session for user:', userIdShort);
       createSession(userId);
-      session = getSession(userId); // 作成直後の状態確認
+      session = getSession(userId);
       console.log('✅ New session created:', {
         currentQuestionIndex: session.currentQuestionIndex,
         answersCount: session.answers.length
       });
       
+      // セッションタイマー開始
       setSessionTimeout(userId, lineClient);
       
-      // 重複メッセージ修正済み
       await replyMessages(lineClient, event.replyToken, [
         questions[0]  // "ようこそMirrorLoopへ。今日は、どんな出来事が..."
       ]);
@@ -82,71 +88,12 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     if (session && !session.isComplete) {
       console.log('📝 Processing active session response');
       
+      // タイマーリセット（ユーザーが回答したため）
       setSessionTimeout(userId, lineClient);
       
-      // 🚧 分類処理を一時的に無効化（デバッグ用）
-      console.log('🔧 CLASSIFICATION TEMPORARILY DISABLED FOR DEBUGGING');
-      const classification = "A"; // 強制的にA判定
+      // 🔧 classification処理を完全削除 - すべて通常回答(A)として処理
+      console.log('✅ Processing as normal answer (all responses treated as valid)');
       
-      /* 
-      // 分類処理（一時的にコメントアウト）
-      let classification = "A";
-      
-      const inappropriateKeywords = ['死ね', 'バカ', 'アホ', 'くそ', '殺す'];
-      const isInappropriate = inappropriateKeywords.some(keyword => 
-        text.toLowerCase().includes(keyword.toLowerCase())
-      );
-      const isTooShort = text.length < 2;
-      
-      if (isInappropriate || isTooShort) {
-        classification = "C";
-      } else {
-        try {
-          classification = await classifyUserResponse(openaiClient, text);
-          console.log('🔍 OpenAI Classification result:', classification);
-          
-          if (classification === "C" && text.length >= 5) {
-            console.log('🔧 Overriding C classification to A for substantial response');
-            classification = "A";
-          }
-        } catch (classifyError) {
-          console.error('⚠️ Classification error, defaulting to A:', classifyError.message);
-          classification = "A";
-        }
-      }
-      */
-      
-      console.log('🎯 Final classification:', classification);
-      
-      if (classification === "C") {
-        await replyMessages(lineClient, event.replyToken, [
-          "もう一度、心を落ち着けて答えてみてください。",
-          "どんな小さなことでも構いません。"
-        ]);
-        return;
-      }
-      
-      if (classification === "B") {
-        try {
-          const comment = await generateObservationComment(openaiClient, text);
-          const qIndex = session.currentQuestionIndex;
-          
-          await replyMessages(lineClient, event.replyToken, [
-            comment,
-            questions[qIndex]
-          ]);
-        } catch (commentError) {
-          console.error('⚠️ Comment generation error:', commentError.message);
-          await replyMessages(lineClient, event.replyToken, [
-            "その気持ち、よくわかります。",
-            questions[session.currentQuestionIndex]
-          ]);
-        }
-        return;
-      }
-      
-      // 通常の回答として処理（A）
-      console.log('✅ Processing as normal answer (A)');
       console.log('📊 Session BEFORE updateSession:', {
         currentQuestionIndex: session.currentQuestionIndex,
         answersCount: session.answers.length
@@ -162,7 +109,7 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
         lastAnswer: session.answers[session.answers.length - 1]?.substring(0, 50) + '...'
       });
       
-      // 🔧 重要：質問数チェックの詳細ログ
+      // 質問進行チェック
       console.log('🔍 Question progress check:', {
         currentIndex: session.currentQuestionIndex,
         totalQuestions: questions.length,
@@ -174,7 +121,7 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
       });
       
       if (session.currentQuestionIndex < questions.length) {
-        // まだ質問が残っている
+        // 次の質問を送信
         console.log('➡️ Sending next question');
         console.log('📝 Question index:', session.currentQuestionIndex);
         console.log('📝 Question content:', questions[session.currentQuestionIndex]);
@@ -185,7 +132,7 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
         
         console.log('✅ Next question sent successfully');
       } else {
-        // 🎯 全質問完了の処理
+        // 全質問完了の処理
         console.log('🎯 === ALL QUESTIONS COMPLETED ===');
         console.log('📊 Final session state:', {
           totalAnswers: session.answers.length,
@@ -202,24 +149,30 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
         
         console.log('📤 Completion message sent');
         
-        // 非同期でNotion処理を実行（OpenAI呼び出しを含む）
+        // セッションタイマー停止（観照処理開始のため）
+        clearSessionTimeout(userId);
+        
+        // 非同期で観照処理を実行
         console.log('🔄 Starting processSessionAnswers...');
         processSessionAnswers(session.answers, userId, notionClient, openaiClient, lineClient)
           .then(() => {
             console.log('✅ processSessionAnswers completed successfully');
-            return pushText(lineClient, userId, "観照セッションが完了しました。また心を見つめたいときにお声がけください。");
+            return pushText(lineClient, userId, 
+              "観照セッションが完了しました。\n\nまた心を見つめたいときにお声がけください。\n\n🙏 ありがとうございました。"
+            );
           })
           .then(() => {
             console.log('✅ Completion message pushed successfully');
           })
           .catch((error) => {
             console.error('❌ processSessionAnswers error:', error);
-            return pushText(lineClient, userId, "処理中にエラーが発生しましたが、あなたの観照は記録されています。");
+            return pushText(lineClient, userId, 
+              "処理中にエラーが発生しましたが、あなたの観照は記録されています。\n\nまた心を見つめたいときにお声がけください。"
+            );
           });
         
         // セッションクリア
         clearSession(userId);
-        clearSessionTimeout(userId);
         console.log('🧹 Session cleared');
       }
       
@@ -233,14 +186,15 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     
     // セッション完了後またはセッション外のメッセージ処理
     if (session && session.isComplete) {
-      console.log('⚠️ Message to completed session - this should not happen after clearSession');
+      console.log('⚠️ Message to completed session - clearing session');
       clearSession(userId);
+      clearSessionTimeout(userId);
     }
     
     // セッション外からのメッセージ
     console.log('🏠 No active session, showing welcome message');
     await replyMessages(lineClient, event.replyToken, [
-      "MirrorLoopへようこそ。どんなことでも構いません。まずは感じたことを送ってみてください。"
+      "MIRRORLOOPへようこそ。仏教の唯識をベースにしたAIです。今の自分が見つめたい気持ちや出来事を送っていただくと、問いから自分を見つめる観照セッションが始まります。"
     ]);
     
   } catch (error) {
@@ -251,15 +205,18 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
       text: text.substring(0, 100)
     });
     
+    // エラー時はタイマーもクリーンアップ
+    clearSessionTimeout(userId);
+    
     try {
       await replyMessages(lineClient, event.replyToken, [
-        "申し訳ありません。一時的な問題が発生しました。もう一度お試しください。"
+        "申し訳ありません。一時的な問題が発生しました。\n\nもう一度お試しください。"
       ]);
     } catch (replyError) {
       console.error('❌ Error reply failed:', replyError.message);
     }
   } finally {
-    console.log('🔍 === SESSION HANDLER END ===\n');
+    console.log('🔍 === SESSION HANDLER END ===');
   }
 }
 
