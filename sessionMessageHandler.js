@@ -152,23 +152,14 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
         // セッションタイマー停止（観照処理開始のため）
         clearSessionTimeout(userId);
         
-        // 非同期で観照処理を実行
+        // 非同期で観照処理を実行（完了メッセージは送信しない）
         console.log('🔄 Starting processSessionAnswers...');
         processSessionAnswers(session.answers, userId, notionClient, openaiClient, lineClient)
           .then(() => {
             console.log('✅ processSessionAnswers completed successfully');
-            return pushText(lineClient, userId, 
-              "観照セッションが完了しました。\n\nまた心を見つめたいときにお声がけください。\n\n🙏 ありがとうございました。"
-            );
-          })
-          .then(() => {
-            console.log('✅ Completion message pushed successfully');
           })
           .catch((error) => {
             console.error('❌ processSessionAnswers error:', error);
-            return pushText(lineClient, userId, 
-              "処理中にエラーが発生しましたが、あなたの観照は記録されています。\n\nまた心を見つめたいときにお声がけください。"
-            );
           });
         
         // セッションクリア
