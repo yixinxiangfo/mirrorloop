@@ -24,14 +24,20 @@ async function callTypebotAPI(message, userId) {
       const sessionId = typebotSessions[userId].sessionId;
       apiUrl = `https://typebot.io/api/v1/sessions/${sessionId}/continueChat`;
       requestBody = {
-        message: message
+        message: {
+          type: "text",
+          text: message
+        }
       };
       console.log('📞 Continuing existing session:', sessionId.substring(0, 8) + '...');
     } else {
       // 新規セッション開始
       apiUrl = `${TYPEBOT_URL}/startChat`;
       requestBody = {
-        message: message || ''
+        message: {
+          type: "text",
+          text: message || ''
+        }
       };
       console.log('🆕 Starting new Typebot session');
     }
