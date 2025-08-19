@@ -1,7 +1,7 @@
 // typebotHandler.js
 // Typebot統合ハンドラー
 
-const fetch = require('node-fetch');
+//const fetch = require('node-fetch');← この行を削除またはコメントアウト
 const processSessionAnswers = require('./processSessionAnswers');
 
 // Typebotセッション管理
