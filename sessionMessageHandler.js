@@ -3,6 +3,7 @@ const { getSession, createSession, updateSession, clearSession } = require('./se
 const questions = require('./questions');
 const { replyMessages, pushText } = require('./lineUtils');
 const processSessionAnswers = require('./processSessionAnswers');
+const { handleTypebotFlow } = require('./typebotHandler'); // ← 追加
 
 // セッションタイマー管理
 const sessionTimeouts = {}; // userId -> timeoutID
@@ -39,8 +40,15 @@ function clearSessionTimeout(userId) {
   }
 }
 
-// メインのメッセージハンドラー
+// メインのメッセージハンドラー（Typebot統合版）
 async function sessionMessageHandler(event, notionClient, openaiClient, lineClient) {
+  const USE_TYPEBOT = process.env.USE_TYPEBOT === 'true';
+  
+  if (USE_TYPEBOT) {
+    return await handleTypebotFlow(event, notionClient, openaiClient, lineClient);
+  }
+
+  // 以下は既存の処理（Classicモード）
   const userId = event.source.userId;
   const text = event.message.text.trim();
   const userIdShort = userId.substring(0, 8) + '...';
