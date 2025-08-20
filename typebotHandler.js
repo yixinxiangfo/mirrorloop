@@ -13,6 +13,9 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
     const TYPEBOT_URL = process.env.TYPEBOT_URL;
     const TYPEBOT_API_TOKEN = process.env.TYPEBOT_API_TOKEN; // 🆕 追加
     
+    console.log(`[Debug] TYPEBOT_URL: ${TYPEBOT_URL}`);
+    console.log(`[Debug] TYPEBOT_API_TOKEN存在: ${!!TYPEBOT_API_TOKEN}`);
+    
     if (!TYPEBOT_URL) {
       throw new Error('TYPEBOT_URL環境変数が設定されていません');
     }
