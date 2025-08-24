@@ -11,10 +11,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
 
     // 環境変数から設定を取得
     const TYPEBOT_URL = process.env.TYPEBOT_URL;
-    const TYPEBOT_API_TOKEN = process.env.TYPEBOT_API_TOKEN; // 🆕 追加
-    
-    console.log(`[Debug] TYPEBOT_URL: ${TYPEBOT_URL}`);
-    console.log(`[Debug] TYPEBOT_API_TOKEN存在: ${!!TYPEBOT_API_TOKEN}`);
+    const TYPEBOT_API_TOKEN = process.env.TYPEBOT_API_TOKEN;
     
     if (!TYPEBOT_URL) {
       throw new Error('TYPEBOT_URL環境変数が設定されていません');
@@ -24,7 +21,10 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
       throw new Error('TYPEBOT_API_TOKEN環境変数が設定されていません');
     }
 
-    // 🆕 認証ヘッダーを追加
+    console.log(`[Debug] TYPEBOT_URL: ${TYPEBOT_URL}`);
+    console.log(`[Debug] TYPEBOT_API_TOKEN存在: ${!!TYPEBOT_API_TOKEN}`);
+
+    // 認証ヘッダーを追加
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${TYPEBOT_API_TOKEN}`
@@ -34,7 +34,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
     let apiResponse;
 
     if (!sessionId) {
-      // 🔄 新しいチャット開始 (認証ヘッダー追加)
+      // 新しいチャット開始
       console.log('[Typebot] 新しいセッション開始');
       
       const startChatUrl = `${TYPEBOT_URL}/startChat`;
@@ -58,7 +58,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
       console.log(`[Typebot] セッション開始成功: ${sessionId}`);
       
     } else {
-      // 🔄 既存セッションの続行 (認証ヘッダー追加)
+      // 既存セッションの続行
       console.log(`[Typebot] 既存セッション続行: ${sessionId}`);
       
       const continueChatUrl = `https://typebot.io/api/v1/sessions/${sessionId}/continueChat`;
@@ -74,21 +74,14 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
       apiResponse = await axios.post(continueChatUrl, requestBody, { headers });
     }
 
-    // 🎯 Typebot応答の処理
+    // 🎯 Typebot応答の処理（改良版）
     console.log('[Typebot] API応答:', JSON.stringify(apiResponse.data, null, 2));
     
     const typebotMessages = apiResponse.data.messages || [];
     const typebotInput = apiResponse.data.input;
 
-    // LINE返信メッセージを構築
-    let replyText = '';
-    
-    if (typebotMessages.length > 0) {
-      replyText = typebotMessages
-        .map(msg => extractTextFromMessage(msg))
-        .filter(text => text)
-        .join('\n\n');
-    }
+    // 🔧 LINE返信の構築（ボタン対応）
+    await sendFormattedResponse(lineClient, event.replyToken, typebotMessages, typebotInput);
 
     // セッション完了判定の改良
     const isSessionComplete = checkSessionComplete(apiResponse.data);
@@ -96,7 +89,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
     if (isSessionComplete) {
       console.log('[Typebot] セッション完了を検出');
       
-      // 🔍 観照セッション分析の実行
+      // 観照セッション分析の実行
       const sessionAnswers = extractSessionAnswers(apiResponse.data);
       
       if (sessionAnswers && Object.keys(sessionAnswers).length > 0) {
@@ -111,19 +104,15 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
           userId
         );
         
-        replyText += `\n\n✨ 観照セッションが完了しました\n${analysisResult.comment}`;
+        // 追加メッセージとして分析結果を送信
+        await lineClient.pushMessage(userId, {
+          type: 'text',
+          text: `✨ 観照セッションが完了しました\n\n${analysisResult.comment}`
+        });
       }
       
       // セッション終了時にクリーンアップ
       sessionStore.delete(userId);
-    }
-
-    // LINE返信
-    if (replyText) {
-      await lineClient.replyMessage(event.replyToken, {
-        type: 'text',
-        text: replyText
-      });
     }
 
     return { success: true, sessionComplete: isSessionComplete };
@@ -149,6 +138,155 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
     
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * 🆕 フォーマット済み応答の送信（ボタン対応）
+ */
+async function sendFormattedResponse(lineClient, replyToken, messages, input) {
+  const lineMessages = [];
+  
+  // 1. テキストメッセージの処理
+  if (messages && messages.length > 0) {
+    for (const message of messages) {
+      const messageText = extractTextFromMessage(message);
+      if (messageText) {
+        // 長いメッセージを分割
+        const chunks = splitLongMessage(messageText);
+        for (const chunk of chunks) {
+          lineMessages.push({
+            type: 'text',
+            text: chunk
+          });
+        }
+      }
+    }
+  }
+
+  // 2. 入力タイプに基づく処理
+  if (input) {
+    console.log('[Typebot] Input detected:', input.type);
+    console.log('[Typebot] Input full data:', JSON.stringify(input, null, 2));
+    
+    // 🎯 各種入力タイプに対応
+    if (input.type === 'choice input' || input.type === 'buttons input' || input.items) {
+      // 選択肢をLINE Quick Replyに変換
+      const quickReply = convertToQuickReply(input);
+      if (quickReply && quickReply.items.length > 0) {
+        const lastMessage = lineMessages[lineMessages.length - 1];
+        if (lastMessage) {
+          lastMessage.quickReply = quickReply;
+          console.log('[Typebot] QuickReply added to last message');
+        } else {
+          // メッセージがない場合は選択肢だけ送信
+          lineMessages.push({
+            type: 'text',
+            text: '✨ 選択してください',
+            quickReply: quickReply
+          });
+          console.log('[Typebot] Standalone QuickReply message created');
+        }
+      } else {
+        console.log('[Typebot] Failed to create QuickReply from input');
+      }
+    } else if (input.type === 'text input') {
+      // テキスト入力の案内
+      lineMessages.push({
+        type: 'text',
+        text: '💭 あなたの思いをお聞かせください'
+      });
+    }
+  }
+
+  // 3. メッセージ送信（最大5つまで）
+  if (lineMessages.length > 0) {
+    const messagesToSend = lineMessages.slice(0, 5); // LINE制限
+    await lineClient.replyMessage(replyToken, messagesToSend);
+  }
+}
+
+/**
+ * 🆕 選択肢をLINE Quick Replyに変換（Typebot実データ対応）
+ */
+function convertToQuickReply(input) {
+  console.log('[Debug] Converting input to QuickReply:', JSON.stringify(input, null, 2));
+  
+  if (!input.items || !Array.isArray(input.items)) {
+    console.log('[Debug] No items found or items is not array');
+    return null;
+  }
+  
+  const quickReplyItems = input.items.map((item, index) => {
+    // Typebotのアイテム構造に対応
+    const label = item.content || item.text || item.label || `選択肢${index + 1}`;
+    
+    console.log(`[Debug] Item ${index}:`, { 
+      content: item.content, 
+      text: item.text, 
+      label: item.label,
+      final: label 
+    });
+    
+    return {
+      type: 'action',
+      action: {
+        type: 'message',
+        label: label.trim(),
+        text: label.trim()
+      }
+    };
+  });
+
+  console.log('[Debug] Generated QuickReply items:', quickReplyItems);
+
+  return {
+    items: quickReplyItems.slice(0, 13) // LINE制限
+  };
+}
+
+/**
+ * 🆕 長いメッセージを適切に分割
+ */
+function splitLongMessage(text, maxLength = 500) {
+  if (text.length <= maxLength) return [text];
+  
+  const chunks = [];
+  const paragraphs = text.split('\n\n');
+  let currentChunk = '';
+  
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length + 2 > maxLength) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      if (paragraph.length > maxLength) {
+        // 非常に長い段落は強制分割
+        const sentences = paragraph.split('。');
+        for (const sentence of sentences) {
+          if (currentChunk.length + sentence.length + 1 > maxLength) {
+            if (currentChunk) {
+              chunks.push(currentChunk.trim());
+              currentChunk = '';
+            }
+          }
+          currentChunk += sentence + '。';
+        }
+      } else {
+        currentChunk = paragraph;
+      }
+    } else {
+      if (currentChunk) currentChunk += '\n\n';
+      currentChunk += paragraph;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
 }
 
 /**
