@@ -190,11 +190,9 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
         console.log('[Typebot] Failed to create QuickReply from input');
       }
     } else if (input.type === 'text input') {
-      // テキスト入力の案内
-      lineMessages.push({
-        type: 'text',
-        text: '💭 あなたの思いをお聞かせください'
-      });
+      // 🔇 テキスト入力時の案内メッセージを削除（ユーザー要望）
+      // 必要に応じて特別な場合のみ表示するよう制御可能
+      console.log('[Typebot] Text input detected - no additional message');
     }
   }
 
@@ -206,7 +204,7 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
 }
 
 /**
- * 🆕 選択肢をLINE Quick Replyに変換（Typebot実データ対応）
+ * 🆕 選択肢をLINE Quick Replyに変換（Typebot実データ対応 + 3つ制限）
  */
 function convertToQuickReply(input) {
   console.log('[Debug] Converting input to QuickReply:', JSON.stringify(input, null, 2));
@@ -216,7 +214,11 @@ function convertToQuickReply(input) {
     return null;
   }
   
-  const quickReplyItems = input.items.map((item, index) => {
+  // 🎯 3つまでに制限（スクロール防止）
+  const limitedItems = input.items.slice(0, 3);
+  const hasMoreItems = input.items.length > 3;
+  
+  const quickReplyItems = limitedItems.map((item, index) => {
     // Typebotのアイテム構造に対応
     const label = item.content || item.text || item.label || `選択肢${index + 1}`;
     
@@ -237,10 +239,23 @@ function convertToQuickReply(input) {
     };
   });
 
+  // 4つ以上ある場合は「その他」を追加
+  if (hasMoreItems) {
+    quickReplyItems.push({
+      type: 'action',
+      action: {
+        type: 'message',
+        label: 'その他の選択肢',
+        text: 'その他'
+      }
+    });
+    console.log(`[Debug] Added "その他" button (${input.items.length} total items)`);
+  }
+
   console.log('[Debug] Generated QuickReply items:', quickReplyItems);
 
   return {
-    items: quickReplyItems.slice(0, 13) // LINE制限
+    items: quickReplyItems
   };
 }
 
@@ -353,32 +368,74 @@ function checkSessionComplete(typebotResponse) {
 }
 
 /**
- * セッション回答抽出の改良版
+ * セッション回答抽出の改良版（デバッグ強化）
  */
 function extractSessionAnswers(typebotResponse) {
   const answers = {};
   
-  // variables から answer1-answer9 を抽出
+  console.log('[Debug] === セッション回答抽出開始 ===');
+  console.log('[Debug] typebotResponse全体:', JSON.stringify(typebotResponse, null, 2));
+  
+  // パターン1: typebot.variables から抽出
   if (typebotResponse.typebot && typebotResponse.typebot.variables) {
-    typebotResponse.typebot.variables.forEach(variable => {
+    console.log('[Debug] typebot.variables found:', typebotResponse.typebot.variables.length);
+    typebotResponse.typebot.variables.forEach((variable, index) => {
+      console.log(`[Debug] Variable ${index}:`, {
+        name: variable.name,
+        value: variable.value,
+        isSessionVariable: variable.isSessionVariable
+      });
+      
+      // answer1-answer9 以外の変数も確認
+      if (variable.name && variable.value) {
+        if (variable.name.match(/^answer[1-9]$/)) {
+          answers[variable.name] = variable.value;
+          console.log(`[Debug] ✅ Found answer: ${variable.name} = ${variable.value}`);
+        } else {
+          console.log(`[Debug] Other variable: ${variable.name} = ${variable.value}`);
+        }
+      }
+    });
+  } else {
+    console.log('[Debug] ❌ typebot.variables not found');
+  }
+  
+  // パターン2: result.variables から抽出
+  if (typebotResponse.result && typebotResponse.result.variables) {
+    console.log('[Debug] result.variables found:', typebotResponse.result.variables.length);
+    typebotResponse.result.variables.forEach((variable, index) => {
+      console.log(`[Debug] Result Variable ${index}:`, {
+        name: variable.name,
+        value: variable.value
+      });
+      
       if (variable.name && variable.name.match(/^answer[1-9]$/)) {
         answers[variable.name] = variable.value || '';
+        console.log(`[Debug] ✅ Found result answer: ${variable.name} = ${variable.value}`);
       }
+    });
+  } else {
+    console.log('[Debug] ❌ result.variables not found');
+  }
+  
+  // パターン3: 他の場所を探索
+  if (typebotResponse.variables) {
+    console.log('[Debug] Direct variables found:', typebotResponse.variables.length);
+    typebotResponse.variables.forEach((variable, index) => {
+      console.log(`[Debug] Direct Variable ${index}:`, variable);
     });
   }
   
-  // 代替方法: resultから抽出
-  if (Object.keys(answers).length === 0 && typebotResponse.result) {
-    if (typebotResponse.result.variables) {
-      typebotResponse.result.variables.forEach(variable => {
-        if (variable.name && variable.name.match(/^answer[1-9]$/)) {
-          answers[variable.name] = variable.value || '';
-        }
-      });
-    }
+  console.log('[Debug] === 最終抽出結果 ===');
+  console.log('[Debug] answers:', answers);
+  console.log('[Debug] answers count:', Object.keys(answers).length);
+  
+  // 空の場合は警告
+  if (Object.keys(answers).length === 0) {
+    console.log('[WARNING] ⚠️ 回答が1つも抽出できませんでした！');
+    console.log('[WARNING] Typebot変数名が想定と異なる可能性があります');
   }
   
-  console.log('[Typebot] 抽出された回答:', answers);
   return answers;
 }
 
