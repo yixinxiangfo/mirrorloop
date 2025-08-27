@@ -87,9 +87,11 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
     const isSessionComplete = checkSessionComplete(apiResponse.data);
     
     if (isSessionComplete) {
-      console.log('[Typebot] セッション完了を検出 - 3秒待機してから分析実行');
+      console.log('[Typebot] セッション完了を検出 - HTTP Requestブロックでの分析に委任');
       
-      // 3秒遅延してデータ保存完了を待つ
+      // 🚫 API方式での分析を無効化（HTTP Requestブロックに委任）
+      /*
+      // 旧方式：API経由での分析（無効化）
       setTimeout(async () => {
         try {
           console.log('[Typebot] 遅延分析を開始');
@@ -139,6 +141,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
           console.error('[Typebot] 遅延分析エラー:', delayedError);
         }
       }, 3000);
+      */
       
       // セッション終了時にクリーンアップ
       sessionStore.delete(userId);
@@ -397,6 +400,7 @@ function checkSessionComplete(typebotResponse) {
 
 /**
  * セッション回答抽出の改良版（デバッグ強化）
+ * 注意：現在この関数は使用されていません（HTTP Requestブロックに委任）
  */
 function extractSessionAnswers(typebotResponse) {
   const answers = {};
