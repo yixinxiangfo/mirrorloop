@@ -82,6 +82,10 @@ try {
 
 const app = express();
 
+// JSONパーサーの設定（重要：この設定がないとWebhookが動作しない）
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // 軽量なKeepAlive専用エンドポイント（cronjob用）
 app.get('/keepalive', (req, res) => {
   res.status(200).json({ 
