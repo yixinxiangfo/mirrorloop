@@ -74,42 +74,71 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
       apiResponse = await axios.post(continueChatUrl, requestBody, { headers });
     }
 
-    // 🎯 Typebot応答の処理（改良版）
+    // Typebot応答の処理（改良版）
     console.log('[Typebot] API応答:', JSON.stringify(apiResponse.data, null, 2));
     
     const typebotMessages = apiResponse.data.messages || [];
     const typebotInput = apiResponse.data.input;
 
-    // 🔧 LINE返信の構築（ボタン対応）
+    // LINE返信の構築（ボタン対応）
     await sendFormattedResponse(lineClient, event.replyToken, typebotMessages, typebotInput);
 
-    // セッション完了判定の改良
+    // セッション完了判定
     const isSessionComplete = checkSessionComplete(apiResponse.data);
     
     if (isSessionComplete) {
-      console.log('[Typebot] セッション完了を検出');
+      console.log('[Typebot] セッション完了を検出 - 3秒待機してから分析実行');
       
-      // 観照セッション分析の実行
-      const sessionAnswers = extractSessionAnswers(apiResponse.data);
-      
-      if (sessionAnswers && Object.keys(sessionAnswers).length > 0) {
-        console.log('[Typebot] セッション回答を抽出:', sessionAnswers);
-        
-        // processSessionAnswers.js を呼び出し
-        const { processSessionAnswers } = require('./processSessionAnswers');
-        const analysisResult = await processSessionAnswers(
-          sessionAnswers, 
-          openaiClient, 
-          notionClient, 
-          userId
-        );
-        
-        // 追加メッセージとして分析結果を送信
-        await lineClient.pushMessage(userId, {
-          type: 'text',
-          text: `✨ 観照セッションが完了しました\n\n${analysisResult.comment}`
-        });
-      }
+      // 3秒遅延してデータ保存完了を待つ
+      setTimeout(async () => {
+        try {
+          console.log('[Typebot] 遅延分析を開始');
+          
+          // セッション情報を再取得
+          const finalSessionUrl = `https://typebot.io/api/v1/sessions/${sessionId}`;
+          console.log('[Typebot] 最終セッション情報取得:', finalSessionUrl);
+          
+          const finalResponse = await axios.get(finalSessionUrl, { headers });
+          console.log('[Typebot] 最終セッション応答:', JSON.stringify(finalResponse.data, null, 2));
+          
+          // 回答抽出
+          const sessionAnswers = extractSessionAnswers(finalResponse.data);
+          
+          if (sessionAnswers && Object.keys(sessionAnswers).length > 0) {
+            console.log('[Typebot] 遅延分析: 回答データ取得成功:', sessionAnswers);
+            
+            const { processSessionAnswers } = require('./processSessionAnswers');
+            const analysisResult = await processSessionAnswers(
+              sessionAnswers, 
+              openaiClient, 
+              notionClient, 
+              userId
+            );
+            
+            // pushMessageで分析結果を送信
+            await lineClient.pushMessage(userId, {
+              type: 'text',
+              text: `観照の結果をお伝えします\n\n${analysisResult.comment}`
+            });
+            
+            console.log('[Typebot] 遅延分析完了');
+          } else {
+            console.log('[Typebot] 遅延分析でも回答データが取得できませんでした');
+            
+            // デバッグ用：別のAPIエンドポイントを試行
+            try {
+              const resultUrl = `https://app.typebot.io/api/v1/typebots/${sessionId.split('-')[0]}/results`;
+              console.log('[Typebot] Results API試行:', resultUrl);
+              const resultResponse = await axios.get(resultUrl, { headers });
+              console.log('[Typebot] Results応答:', JSON.stringify(resultResponse.data, null, 2));
+            } catch (resultError) {
+              console.log('[Typebot] Results API失敗:', resultError.message);
+            }
+          }
+        } catch (delayedError) {
+          console.error('[Typebot] 遅延分析エラー:', delayedError);
+        }
+      }, 3000);
       
       // セッション終了時にクリーンアップ
       sessionStore.delete(userId);
@@ -141,7 +170,7 @@ async function handleTypebotFlow(event, notionClient, openaiClient, lineClient) 
 }
 
 /**
- * 🆕 フォーマット済み応答の送信（ボタン対応）
+ * フォーマット済み応答の送信（ボタン対応）
  */
 async function sendFormattedResponse(lineClient, replyToken, messages, input) {
   const lineMessages = [];
@@ -168,7 +197,7 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
     console.log('[Typebot] Input detected:', input.type);
     console.log('[Typebot] Input full data:', JSON.stringify(input, null, 2));
     
-    // 🎯 各種入力タイプに対応
+    // 各種入力タイプに対応
     if (input.type === 'choice input' || input.type === 'buttons input' || input.items) {
       // 選択肢をLINE Quick Replyに変換
       const quickReply = convertToQuickReply(input);
@@ -181,7 +210,7 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
           // メッセージがない場合は選択肢だけ送信
           lineMessages.push({
             type: 'text',
-            text: '✨ 選択してください',
+            text: '選択してください',
             quickReply: quickReply
           });
           console.log('[Typebot] Standalone QuickReply message created');
@@ -190,8 +219,7 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
         console.log('[Typebot] Failed to create QuickReply from input');
       }
     } else if (input.type === 'text input') {
-      // 🔇 テキスト入力時の案内メッセージを削除（ユーザー要望）
-      // 必要に応じて特別な場合のみ表示するよう制御可能
+      // テキスト入力時の案内メッセージを削除（ユーザー要望）
       console.log('[Typebot] Text input detected - no additional message');
     }
   }
@@ -204,7 +232,7 @@ async function sendFormattedResponse(lineClient, replyToken, messages, input) {
 }
 
 /**
- * 🆕 選択肢をLINE Quick Replyに変換（Typebot実データ対応 + 3つ制限）
+ * 選択肢をLINE Quick Replyに変換（3つ制限）
  */
 function convertToQuickReply(input) {
   console.log('[Debug] Converting input to QuickReply:', JSON.stringify(input, null, 2));
@@ -214,7 +242,7 @@ function convertToQuickReply(input) {
     return null;
   }
   
-  // 🎯 3つまでに制限（スクロール防止）
+  // 3つまでに制限（スクロール防止）
   const limitedItems = input.items.slice(0, 3);
   const hasMoreItems = input.items.length > 3;
   
@@ -260,7 +288,7 @@ function convertToQuickReply(input) {
 }
 
 /**
- * 🆕 長いメッセージを適切に分割
+ * 長いメッセージを適切に分割
  */
 function splitLongMessage(text, maxLength = 500) {
   if (text.length <= maxLength) return [text];
