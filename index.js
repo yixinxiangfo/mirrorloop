@@ -83,7 +83,6 @@ try {
 const app = express();
 
 // JSONパーサーの設定（LINE Webhook以外のエンドポイント用）
-// 注意: LINE Webhookは署名検証のため手動でJSONを処理
 app.use('/webhook', express.json());
 app.use('/webhook', express.urlencoded({ extended: true }));
 
@@ -231,12 +230,12 @@ app.use((error, req, res, next) => {
   }
 });
 
-// Typebot Webhook エンドポイント（安全版）
+// Typebot Webhook エンドポイント（TypebotのOpenAI結果取得対応版）
 app.post('/webhook/typebot', async (req, res) => {
   console.log('🪝 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
   
   try {
-    const { userId, sessionId, answers } = req.body;
+    const { userId, sessionId, answers, observationResult } = req.body;
     
     // データ検証
     if (!userId) {
@@ -248,6 +247,7 @@ app.post('/webhook/typebot', async (req, res) => {
     }
     
     console.log('📝 観照回答データ:', answers);
+    console.log('🎯 TypebotのOpenAI結果:', observationResult);
     console.log('👤 ユーザーID:', userId);
     
     // 必要なクライアントの確認
@@ -275,14 +275,15 @@ app.post('/webhook/typebot', async (req, res) => {
       throw new Error('有効な回答が見つかりませんでした');
     }
     
-    // 観照分析実行
+    // 観照分析実行（TypebotのOpenAI結果を含む）
     console.log('🧠 観照分析を開始...');
     
     const analysisResult = await processSessionAnswers(
       answersArray, 
       openaiClient, 
       notionClient, 
-      userId
+      userId,
+      observationResult  // TypebotのOpenAI結果を渡す
     );
     
     console.log('✅ 観照分析完了:', analysisResult);
@@ -303,7 +304,8 @@ app.post('/webhook/typebot', async (req, res) => {
       sessionId: sessionId,
       analysisResult: {
         illusionScore: analysisResult.illusionScore,
-        processedAnswers: answersArray.length
+        processedAnswers: answersArray.length,
+        usedTypebotResult: !!observationResult
       }
     });
     
