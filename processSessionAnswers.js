@@ -1,8 +1,8 @@
-// processSessionAnswers.js（バランス版 - 観照コメント復活 + タイムアウト対策）
+// processSessionAnswers.js（修正版 - 引数順序をindex.jsに合わせる）
 
 const { pushText } = require('./lineUtils');
 
-async function processSessionAnswers(answers, userId, notionClient, openaiClient, lineClient) {
+async function processSessionAnswers(answers, openaiClient, notionClient, userId) {
   console.log('📄 Processing session answers for user:', userId.substring(0, 8) + '...');
   console.log('📝 Total answers:', answers.length);
 
@@ -12,6 +12,7 @@ async function processSessionAnswers(answers, userId, notionClient, openaiClient
     summaryText;
 
   let observationComment = null;
+  let illusionScore = 'N/A';
 
   try {
     console.log('🤖 Calling OpenAI for observation comment...');
@@ -29,7 +30,7 @@ ${safeSummary}
 - 説教ではなく、鏡のように返す
 
 JSON形式で出力：
-{"comment": "観照コメント（80文字以内）"}`;
+{"comment": "観照コメント（80文字以内）", "illusionScore": 数値}`;
 
     const commentRes = await openaiClient.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -38,7 +39,7 @@ JSON形式で出力：
         content: commentPrompt 
       }],
       temperature: 0.6,
-      max_tokens: 300, // トークン数削減
+      max_tokens: 300,
     });
 
     const commentOutput = commentRes.choices[0].message.content;
@@ -50,6 +51,7 @@ JSON形式で出力：
       if (jsonMatch) {
         const jsonData = JSON.parse(jsonMatch[0]);
         observationComment = jsonData.comment || null;
+        illusionScore = jsonData.illusionScore || 'N/A';
       } else {
         observationComment = commentOutput.trim();
       }
@@ -59,33 +61,13 @@ JSON形式で出力：
     }
 
     console.log('📝 Generated comment:', observationComment);
-
-    // ユーザーに観照コメント送信
-    if (observationComment && observationComment.length > 5) {
-      await pushText(lineClient, userId, 
-        `【観照の結果】\n\n${observationComment}`
-      );
-      console.log('✅ Observation comment sent successfully');
-    } else {
-      // フォールバック：唯識的なメッセージ
-      await pushText(lineClient, userId, 
-        `【観照の結果】\n\n心の動きを見つめることで、執着や煩悩の正体が見えてきます。この気づきこそが、真の自己理解への第一歩です。`
-      );
-      console.log('✅ Fallback observation comment sent');
-    }
+    console.log('📊 Illusion score:', illusionScore);
 
   } catch (openaiError) {
     console.error("❌ OpenAI error:", openaiError.message);
     
-    // エラー時も唯識的なフォールバック
-    try {
-      await pushText(lineClient, userId, 
-        `【観照の結果】\n\n9つの問いを通じて、あなた自身の心の動きを深く見つめることができました。執着や煩悩に気づくことが、解放への道です。`
-      );
-      console.log('✅ Error fallback message sent');
-    } catch (fallbackError) {
-      console.error("❌ Fallback message failed:", fallbackError.message);
-    }
+    // エラー時のフォールバック
+    observationComment = '9つの問いを通じて、あなた自身の心の動きを深く見つめることができました。執着や煩悩に気づくことが、解放への道です。';
   }
 
   // 非同期でSupabase保存（メイン処理をブロックしない）
@@ -114,6 +96,12 @@ JSON形式で出力：
       console.error("❌ Supabase save error:", supabaseError.message);
     }
   });
+
+  // 結果を返す（index.jsで使用）
+  return {
+    comment: observationComment || '心の動きを見つめることで、執着や煩悩の正体が見えてきます。この気づきこそが、真の自己理解への第一歩です。',
+    illusionScore: illusionScore
+  };
 }
 
 module.exports = processSessionAnswers;
