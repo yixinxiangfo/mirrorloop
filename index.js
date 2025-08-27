@@ -5,9 +5,18 @@ const line = require('@line/bot-sdk');
 const { Client } = require('@notionhq/client');
 const { OpenAI } = require('openai');
 const { sessionMessageHandler } = require('./sessionMessageHandler');
-const processSessionAnswers = require('./processSessionAnswers'); // 🪝 新規追加
 
 dotenv.config();
+
+// processSessionAnswers の安全な読み込み
+let processSessionAnswers = null;
+try {
+  processSessionAnswers = require('./processSessionAnswers');
+  console.log('✅ processSessionAnswers loaded successfully');
+} catch (error) {
+  console.error('❌ processSessionAnswers loading failed:', error.message);
+  processSessionAnswers = null;
+}
 
 // 環境変数の存在確認（アプリ終了ではなくログ出力のみ）
 const requiredEnvVars = [
@@ -106,7 +115,8 @@ app.get('/health', (req, res) => {
       notionInitialized: !!notionClient,
       openaiInitialized: !!openaiClient
     },
-    missingEnvVars: missingEnvVars
+    missingEnvVars: missingEnvVars,
+    webhookModule: !!processSessionAnswers
   });
 });
 
@@ -216,9 +226,7 @@ app.use((error, req, res, next) => {
   }
 });
 
-// ===== 🪝 TYPEBOT WEBHOOK機能 - 新規追加 =====
-
-// Typebot Webhook エンドポイント
+// Typebot Webhook エンドポイント（安全版）
 app.post('/webhook/typebot', async (req, res) => {
   console.log('🪝 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
   
@@ -237,9 +245,14 @@ app.post('/webhook/typebot', async (req, res) => {
     console.log('📝 観照回答データ:', answers);
     console.log('👤 ユーザーID:', userId);
     
-    // 必要なクライアントの確認（既存の方式に合わせる）
+    // 必要なクライアントの確認
     if (!lineClient || !notionClient || !openaiClient) {
       throw new Error('必要なクライアントが初期化されていません');
+    }
+    
+    // processSessionAnswers の存在確認
+    if (!processSessionAnswers) {
+      throw new Error('観照分析機能が利用できません（processSessionAnswersが読み込まれていません）');
     }
     
     // 回答データを配列形式に変換
@@ -272,7 +285,7 @@ app.post('/webhook/typebot', async (req, res) => {
     // 分析結果をLINEで通知
     const resultMessage = {
       type: 'text',
-      text: `✨ 観照の結果をお伝いします\n\n${analysisResult.comment}\n\n📊 錯覚倍率: ${analysisResult.illusionScore || 'N/A'}`
+      text: `✨ 観照の結果をお伝えします\n\n${analysisResult.comment}\n\n📊 錯覚倍率: ${analysisResult.illusionScore || 'N/A'}`
     };
     
     await lineClient.pushMessage(userId, resultMessage);
@@ -292,12 +305,12 @@ app.post('/webhook/typebot', async (req, res) => {
   } catch (error) {
     console.error('❌ Webhook処理エラー:', error);
     
-    // ユーザーにもエラーを通知（既存の方式に合わせて優しく）
+    // ユーザーにもエラーを通知（優しく）
     try {
       if (req.body.userId && lineClient) {
         await lineClient.pushMessage(req.body.userId, {
           type: 'text',
-          text: '申し訳ございません。観照分析中に問題が発生しました。しばらくしてから再度お試しください。'
+          text: '申し訳ございません。観照分析中に問題が発生しました。従来の観照セッションをご利用ください。'
         });
       }
     } catch (lineError) {
@@ -321,7 +334,8 @@ app.post('/webhook/typebot/test', async (req, res) => {
     received: req.body,
     timestamp: new Date().toISOString(),
     server: 'Render',
-    project: 'MIRRORLOOP'
+    project: 'MIRRORLOOP',
+    processSessionAnswersAvailable: !!processSessionAnswers
   });
 });
 
@@ -338,11 +352,12 @@ app.get('/webhook/typebot/health', (req, res) => {
       lineInitialized: !!lineClient,
       notionInitialized: !!notionClient,
       openaiInitialized: !!openaiClient
+    },
+    modules: {
+      processSessionAnswersLoaded: !!processSessionAnswers
     }
   });
 });
-
-// ===== 🪝 WEBHOOK機能追加完了 =====
 
 // Renderで指定されたポートを使用
 const PORT = process.env.PORT || 10000;
@@ -351,15 +366,20 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📱 LINE Webhook URL: https://mirrorloop.onrender.com/`);
   console.log(`🔄 KeepAlive URL: https://mirrorloop.onrender.com/keepalive`);
-  console.log(`🪝 Typebot Webhook URL: https://mirrorloop.onrender.com/webhook/typebot`); // 🪝 新規追加
+  console.log(`🪝 Typebot Webhook URL: https://mirrorloop.onrender.com/webhook/typebot`);
   console.log('🔧 Initialization status:', {
     lineClient: !!lineClient,
     notionClient: !!notionClient,
     openaiClient: !!openaiClient,
-    missingEnvVars: missingEnvVars.length
+    missingEnvVars: missingEnvVars.length,
+    webhookModule: !!processSessionAnswers
   });
   
   if (missingEnvVars.length > 0) {
     console.warn('⚠️ Some features may be limited due to missing environment variables');
+  }
+  
+  if (!processSessionAnswers) {
+    console.warn('⚠️ Webhook analysis feature disabled due to module loading error');
   }
 });
