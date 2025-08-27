@@ -288,10 +288,10 @@ app.post('/webhook/typebot', async (req, res) => {
     
     console.log('✅ 観照分析完了:', analysisResult);
     
-    // 分析結果をLINEで通知
+    // 分析結果をLINEで通知（錯覚倍率削除）
     const resultMessage = {
       type: 'text',
-      text: `✨ 観照の結果をお伝えします\n\n${analysisResult.comment}\n\n📊 錯覚倍率: ${analysisResult.illusionScore || 'N/A'}`
+      text: `✨ 観照の結果をお伝えします\n\n${analysisResult.comment}`
     };
     
     await lineClient.pushMessage(userId, resultMessage);
@@ -303,7 +303,6 @@ app.post('/webhook/typebot', async (req, res) => {
       message: '観照分析が正常に完了しました',
       sessionId: sessionId,
       analysisResult: {
-        illusionScore: analysisResult.illusionScore,
         processedAnswers: answersArray.length,
         usedTypebotResult: !!observationResult
       }

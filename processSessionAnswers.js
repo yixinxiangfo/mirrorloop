@@ -5,8 +5,10 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
   console.log('📝 Total answers:', answers.length);
   console.log('🎯 Typebot observation result:', observationResult);
 
-  // TypebotのOpenAI結果をパースして観照コメントを抽出
+  // TypebotのOpenAI結果をパースして観照コメントと心所データを抽出
   let observationComment = 'Typebotでの観照が完了しました。心の動きを見つめることができました。';
+  let mindFactors = [];
+  let mindCategories = [];
 
   if (observationResult) {
     console.log('🔍 受信した観照結果（生データ）:', observationResult);
@@ -20,20 +22,36 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
       const parsedResult = JSON.parse(cleanedResult);
       console.log('🔍 パース済みJSON:', parsedResult);
       
-      // 複数のキー名でコメントを探す
+      // コメント抽出
       observationComment = parsedResult['コメント'] || 
                           parsedResult['comment'] || 
                           parsedResult.コメント || 
                           parsedResult.comment || 
                           observationResult;
+      
+      // 心所データ抽出
+      mindFactors = parsedResult['心所'] || parsedResult.mindFactors || [];
+      mindCategories = parsedResult['心所分類'] || parsedResult.mindCategories || [];
                           
       console.log('🎯 抽出された観照コメント:', observationComment);
+      console.log('🧠 抽出された心所:', mindFactors);
+      console.log('📋 抽出された心所分類:', mindCategories);
     } catch (parseError) {
       console.log('⚠️ JSON parse failed:', parseError.message);
       console.log('⚠️ Raw observation result:', observationResult);
-      // パースに失敗した場合、観照結果全体を使用
       observationComment = observationResult;
     }
+  }
+
+  // 心所データを含む完全なメッセージを構築
+  let fullMessage = observationComment;
+  
+  if (mindFactors.length > 0) {
+    fullMessage += `\n\n検出された心の状態：${mindFactors.join('、')}`;
+  }
+  
+  if (mindCategories.length > 0) {
+    fullMessage += `\n分類：${mindCategories.join('、')}`;
   }
 
   console.log('📊 錯覚倍率計算をスキップ（将来実装予定）');
@@ -65,9 +83,9 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
     }
   });
 
-  // TypebotのOpenAI結果をそのまま返す（錯覚倍率削除）
+  // 心所データを含む完全なメッセージを返す
   return {
-    comment: observationComment
+    comment: fullMessage
   };
 }
 
