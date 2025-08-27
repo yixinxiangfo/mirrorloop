@@ -5,9 +5,22 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
   console.log('📝 Total answers:', answers.length);
   console.log('🎯 Typebot observation result:', observationResult);
 
-  // TypebotのOpenAI結果をそのまま使用
-  let observationComment = observationResult || 'Typebotでの観照が完了しました。心の動きを見つめることができました。';
+  // TypebotのOpenAI結果をパースして観照コメントを抽出
+  let observationComment = 'Typebotでの観照が完了しました。心の動きを見つめることができました。';
   let illusionScore = 'N/A';
+
+  if (observationResult) {
+    try {
+      // JSON形式の場合はパース
+      const parsedResult = JSON.parse(observationResult);
+      observationComment = parsedResult.コメント || parsedResult.comment || observationResult;
+      console.log('🎯 抽出された観照コメント:', observationComment);
+    } catch (parseError) {
+      // JSONパースに失敗した場合は生のテキストを使用
+      console.log('⚠️ JSON parse failed, using raw text');
+      observationComment = observationResult;
+    }
+  }
 
   console.log('📊 錯覚倍率計算をスキップ（将来実装予定）');
 
