@@ -5,6 +5,7 @@ const line = require('@line/bot-sdk');
 const { Client } = require('@notionhq/client');
 const { OpenAI } = require('openai');
 const { sessionMessageHandler } = require('./sessionMessageHandler');
+const processSessionAnswers = require('./processSessionAnswers'); // 🪝 新規追加
 
 dotenv.config();
 
@@ -215,6 +216,134 @@ app.use((error, req, res, next) => {
   }
 });
 
+// ===== 🪝 TYPEBOT WEBHOOK機能 - 新規追加 =====
+
+// Typebot Webhook エンドポイント
+app.post('/webhook/typebot', async (req, res) => {
+  console.log('🪝 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { userId, sessionId, answers } = req.body;
+    
+    // データ検証
+    if (!userId) {
+      throw new Error('userId が見つかりません');
+    }
+    
+    if (!answers || Object.keys(answers).length === 0) {
+      throw new Error('観照の回答データが見つかりません');
+    }
+    
+    console.log('📝 観照回答データ:', answers);
+    console.log('👤 ユーザーID:', userId);
+    
+    // 必要なクライアントの確認（既存の方式に合わせる）
+    if (!lineClient || !notionClient || !openaiClient) {
+      throw new Error('必要なクライアントが初期化されていません');
+    }
+    
+    // 回答データを配列形式に変換
+    const answersArray = [];
+    for (let i = 1; i <= 9; i++) {
+      const answerKey = `answer${i}`;
+      if (answers[answerKey] && answers[answerKey].trim() !== '') {
+        answersArray.push(answers[answerKey].trim());
+      }
+    }
+    
+    console.log('🔄 変換された回答配列:', answersArray);
+    
+    if (answersArray.length === 0) {
+      throw new Error('有効な回答が見つかりませんでした');
+    }
+    
+    // 観照分析実行
+    console.log('🧠 観照分析を開始...');
+    
+    const analysisResult = await processSessionAnswers(
+      answersArray, 
+      openaiClient, 
+      notionClient, 
+      userId
+    );
+    
+    console.log('✅ 観照分析完了:', analysisResult);
+    
+    // 分析結果をLINEで通知
+    const resultMessage = {
+      type: 'text',
+      text: `✨ 観照の結果をお伝いします\n\n${analysisResult.comment}\n\n📊 錯覚倍率: ${analysisResult.illusionScore || 'N/A'}`
+    };
+    
+    await lineClient.pushMessage(userId, resultMessage);
+    console.log('📱 LINE通知完了');
+    
+    // 成功レスポンス
+    res.json({ 
+      success: true, 
+      message: '観照分析が正常に完了しました',
+      sessionId: sessionId,
+      analysisResult: {
+        illusionScore: analysisResult.illusionScore,
+        processedAnswers: answersArray.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Webhook処理エラー:', error);
+    
+    // ユーザーにもエラーを通知（既存の方式に合わせて優しく）
+    try {
+      if (req.body.userId && lineClient) {
+        await lineClient.pushMessage(req.body.userId, {
+          type: 'text',
+          text: '申し訳ございません。観照分析中に問題が発生しました。しばらくしてから再度お試しください。'
+        });
+      }
+    } catch (lineError) {
+      console.error('❌ LINE通知エラー:', lineError.message);
+    }
+    
+    res.status(500).json({ 
+      error: error.message,
+      details: 'Webhook処理に失敗しました',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// デバッグ用エンドポイント
+app.post('/webhook/typebot/test', async (req, res) => {
+  console.log('🧪 テスト用Webhook受信:', req.body);
+  
+  res.json({ 
+    message: 'テスト成功 - MIRRORLOOPは正常に動作しています',
+    received: req.body,
+    timestamp: new Date().toISOString(),
+    server: 'Render',
+    project: 'MIRRORLOOP'
+  });
+});
+
+// Webhook健全性チェック
+app.get('/webhook/typebot/health', (req, res) => {
+  res.json({
+    status: '✅ HEALTHY',
+    project: 'MIRRORLOOP',
+    endpoint: '/webhook/typebot',
+    message: '観照AIは正常に動作中です',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'production',
+    clients: {
+      lineInitialized: !!lineClient,
+      notionInitialized: !!notionClient,
+      openaiInitialized: !!openaiClient
+    }
+  });
+});
+
+// ===== 🪝 WEBHOOK機能追加完了 =====
+
 // Renderで指定されたポートを使用
 const PORT = process.env.PORT || 10000;
 
@@ -222,6 +351,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📱 LINE Webhook URL: https://mirrorloop.onrender.com/`);
   console.log(`🔄 KeepAlive URL: https://mirrorloop.onrender.com/keepalive`);
+  console.log(`🪝 Typebot Webhook URL: https://mirrorloop.onrender.com/webhook/typebot`); // 🪝 新規追加
   console.log('🔧 Initialization status:', {
     lineClient: !!lineClient,
     notionClient: !!notionClient,
