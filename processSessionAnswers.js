@@ -7,17 +7,31 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
 
   // TypebotのOpenAI結果をパースして観照コメントを抽出
   let observationComment = 'Typebotでの観照が完了しました。心の動きを見つめることができました。';
-  let illusionScore = 'N/A';
 
   if (observationResult) {
+    console.log('🔍 受信した観照結果（生データ）:', observationResult);
     try {
-      // JSON形式の場合はパース
-      const parsedResult = JSON.parse(observationResult);
-      observationComment = parsedResult.コメント || parsedResult.comment || observationResult;
+      // 文字列から```jsonを除去してJSONのみ抽出
+      let cleanedResult = observationResult;
+      if (cleanedResult.includes('```json')) {
+        cleanedResult = cleanedResult.replace(/```json/g, '').replace(/```/g, '');
+      }
+      
+      const parsedResult = JSON.parse(cleanedResult);
+      console.log('🔍 パース済みJSON:', parsedResult);
+      
+      // 複数のキー名でコメントを探す
+      observationComment = parsedResult['コメント'] || 
+                          parsedResult['comment'] || 
+                          parsedResult.コメント || 
+                          parsedResult.comment || 
+                          observationResult;
+                          
       console.log('🎯 抽出された観照コメント:', observationComment);
     } catch (parseError) {
-      // JSONパースに失敗した場合は生のテキストを使用
-      console.log('⚠️ JSON parse failed, using raw text');
+      console.log('⚠️ JSON parse failed:', parseError.message);
+      console.log('⚠️ Raw observation result:', observationResult);
+      // パースに失敗した場合、観照結果全体を使用
       observationComment = observationResult;
     }
   }
@@ -51,10 +65,9 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
     }
   });
 
-  // TypebotのOpenAI結果をそのまま返す
+  // TypebotのOpenAI結果をそのまま返す（錯覚倍率削除）
   return {
-    comment: observationComment,
-    illusionScore: illusionScore
+    comment: observationComment
   };
 }
 
