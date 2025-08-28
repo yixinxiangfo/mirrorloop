@@ -1,6 +1,6 @@
 // enrichMindFactorsWithRoot.js
 
-const rootDictionary = require('./rootDictionary');
+const { rootDictionary } = require('./rootDictionary'); // 修正：分割代入に変更
 
 /**
  * GPTからの出力（例: [{ name: "無慚" }, { name: "忿" }]）に対して、
