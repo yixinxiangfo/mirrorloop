@@ -1,7 +1,7 @@
-// processSessionAnswers.js（匿名化対応版）
+// processSessionAnswers.js（改行修正版）
 
 const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
-const { anonymizeUserId } = require('./userIdUtils'); // 追加：匿名化機能
+const { anonymizeUserId } = require('./userIdUtils');
 
 function identifyThreePoisons(mindFactors) {
   if (!Array.isArray(mindFactors) || mindFactors.length === 0) return ['痴'];
@@ -17,6 +17,17 @@ function identifyThreePoisons(mindFactors) {
   });
   
   return Array.from(detectedRoots).length > 0 ? Array.from(detectedRoots) : ['痴'];
+}
+
+// LINE向けメッセージフォーマット関数
+function formatMessageForLine(text) {
+  if (!text) return text;
+  
+  return text
+    .replace(/\n\n+/g, '\n \n')  // 複数の改行を空行に変換
+    .replace(/\r\n/g, '\n')      // Windows改行を統一
+    .replace(/\r/g, '\n')        // Mac改行を統一
+    .trim();                     // 前後の余分な空白を除去
 }
 
 async function processSessionAnswers(answers, openaiClient, notionClient, userId, observationResult) {
@@ -62,15 +73,18 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
     }
   }
 
+  // 観照コメントの改行を正規化
+  observationComment = formatMessageForLine(observationComment);
+
   // 心所データを含む完全なメッセージを構築
   let fullMessage = observationComment;
   
   if (mindFactors.length > 0) {
-    fullMessage += `\n\n検出された心の状態：${mindFactors.join('、')}`;
+    fullMessage += '\n \n検出された心の状態：' + mindFactors.join('、');
   }
   
   if (mindCategories.length > 0) {
-    fullMessage += `\n分類：${mindCategories.join('、')}`;
+    fullMessage += '\n分類：' + mindCategories.join('、');
   }
 
   console.log('📊 錯覚倍率計算をスキップ（将来実装予定）');
@@ -89,12 +103,11 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
       const threePoisons = identifyThreePoisons(mindFactors);
       console.log('🔍 Identified three poisons:', threePoisons);
 
-      // 修正：LINE User IDを匿名化
       const anonymizedUserId = anonymizeUserId(userId);
       console.log('🔒 Anonymized user ID:', anonymizedUserId);
 
       const saveData = {
-        line_user_id: anonymizedUserId, // 修正：匿名化されたIDを保存
+        line_user_id: anonymizedUserId,
         session_id: `session_${Date.now()}`,
         message_content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}\n\n${answers.map((ans, i) => `Q${i+1}: ${ans}`).join('\n')}`,
         observation_comment: observationComment,
@@ -131,7 +144,9 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
     }
   });
 
-  // 心所データを含む完全なメッセージを返す
+  // 最終的なメッセージもLINE用にフォーマット
+  fullMessage = formatMessageForLine(fullMessage);
+
   return {
     comment: fullMessage
   };
