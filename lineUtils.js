@@ -1,5 +1,16 @@
 // lineUtils.js
 
+// 改行修正用のヘルパー関数（追加）
+function formatLineBreaks(text) {
+  if (!text) return text;
+  
+  return text
+    .replace(/\\n/g, '\n')       // エスケープされた\nを実際の改行に
+    .replace(/\r\n/g, '\n')      // Windows改行を統一
+    .replace(/\r/g, '\n')        // Mac改行を統一
+    .trim();
+}
+
 /**
  * 複数のテキストメッセージを1回のreplyで送信
  * replyTokenは1回のみ使用可能なため、複数メッセージは配列で送信
@@ -14,10 +25,10 @@ async function replyMessages(lineClient, replyToken, texts) {
       return;
     }
     
-    // テキストメッセージオブジェクトの配列を作成
+    // テキストメッセージオブジェクトの配列を作成（改行修正適用）
     const messages = texts.map(text => ({
       type: 'text',
-      text: text
+      text: formatLineBreaks(text)  // 修正：改行処理を追加
     }));
     
     console.log(`📤 Replying with ${messages.length} messages`);
@@ -63,7 +74,7 @@ async function pushText(lineClient, userId, text) {
     
     await lineClient.pushMessage(userId, {
       type: 'text',
-      text: text
+      text: formatLineBreaks(text)  // 修正：改行処理を追加
     });
     
     console.log('✅ Push message sent successfully');
@@ -94,7 +105,7 @@ async function pushMessages(lineClient, userId, texts) {
     
     const messages = texts.map(text => ({
       type: 'text',
-      text: text
+      text: formatLineBreaks(text)  // 修正：改行処理を追加
     }));
     
     console.log(`📤 Pushing ${messages.length} messages to user: ${userId}`);
