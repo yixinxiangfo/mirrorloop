@@ -1,8 +1,8 @@
-// processSessionAnswers.js（簡素化版 - TypebotのOpenAI結果を活用）
+// processSessionAnswers.js（匿名化対応版）
 
-const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot'); // 追加：三毒判定用
+const enrichMindFactorsWithRoot = require('./enrichMindFactorsWithRoot');
+const { anonymizeUserId } = require('./userIdUtils'); // 追加：匿名化機能
 
-// 追加：心所から三毒を判定する関数
 function identifyThreePoisons(mindFactors) {
   if (!Array.isArray(mindFactors) || mindFactors.length === 0) return ['痴'];
   
@@ -86,22 +86,25 @@ async function processSessionAnswers(answers, openaiClient, notionClient, userId
         return;
       }
 
-      // 修正：三毒判定を追加
       const threePoisons = identifyThreePoisons(mindFactors);
       console.log('🔍 Identified three poisons:', threePoisons);
 
+      // 修正：LINE User IDを匿名化
+      const anonymizedUserId = anonymizeUserId(userId);
+      console.log('🔒 Anonymized user ID:', anonymizedUserId);
+
       const saveData = {
-        line_user_id: userId,
+        line_user_id: anonymizedUserId, // 修正：匿名化されたIDを保存
         session_id: `session_${Date.now()}`,
         message_content: `観照セッション ${new Date().toLocaleDateString('ja-JP')}\n\n${answers.map((ans, i) => `Q${i+1}: ${ans}`).join('\n')}`,
-        observation_comment: observationComment, // 修正：パースした観照コメント
-        mind_factors: Array.isArray(mindFactors) ? mindFactors : [], // 修正：パースした心所
-        mind_categories: Array.isArray(mindCategories) ? mindCategories : [], // 修正：パースした心所分類
-        three_poisons: threePoisons // 修正：判定した三毒
+        observation_comment: observationComment,
+        mind_factors: Array.isArray(mindFactors) ? mindFactors : [],
+        mind_categories: Array.isArray(mindCategories) ? mindCategories : [],
+        three_poisons: threePoisons
       };
 
       console.log('💾 Saving data:', {
-        user_id: saveData.line_user_id.substring(0, 8) + '...',
+        user_id: saveData.line_user_id,
         factors_count: saveData.mind_factors.length,
         categories_count: saveData.mind_categories.length,
         poisons_count: saveData.three_poisons.length
