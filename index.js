@@ -47,6 +47,8 @@ if (missingCritical.length > 0) {
 // 各クライアントの安全な初期化
 let lineClient = null;
 let openaiClient = null;
+let supabaseClient = null;
+let notionClient = null;
 
 try {
   if (process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.LINE_CHANNEL_SECRET) {
@@ -71,12 +73,22 @@ try {
 }
 
 // Supabaseクライアントの初期化確認
-let supabaseClient = null;
 try {
   supabaseClient = require('./supabaseClient');
   console.log('✅ Supabase client initialized');
 } catch (error) {
   console.error('❌ Supabase client initialization failed:', error.message);
+}
+
+// Notionクライアントの初期化確認
+try {
+  const { Client } = require('@notionhq/client');
+  if (process.env.NOTION_TOKEN) {
+    notionClient = new Client({ auth: process.env.NOTION_TOKEN });
+    console.log('✅ Notion client initialized');
+  }
+} catch (error) {
+  console.error('❌ Notion client initialization failed:', error.message);
 }
 
 const app = express();
@@ -112,12 +124,14 @@ app.get('/health', (req, res) => {
       hasOpenAIKey: !!process.env.OPENAI_API_KEY,
       hasSupabaseUrl: !!process.env.SUPABASE_URL,
       hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
-      hasTestUserId: !!process.env.TEST_USER_ID_1
+      hasTestUserId: !!process.env.TEST_USER_ID_1,
+      hasNotionToken: !!process.env.NOTION_TOKEN,
     },
     clients: {
       lineInitialized: !!lineClient,
       openaiInitialized: !!openaiClient,
-      supabaseInitialized: !!supabaseClient
+      supabaseInitialized: !!supabaseClient,
+      notionInitialized: !!notionClient
     },
     modules: {
       processSessionAnswersLoaded: !!processSessionAnswers
@@ -168,8 +182,8 @@ app.post('/', async (req, res) => {
             continue;
           }
           
-          // セッションメッセージハンドラーを呼び出し（Notion削除）
-          await sessionMessageHandler(event, null, openaiClient, lineClient);
+          // セッションメッセージハンドラーを呼び出し
+          await sessionMessageHandler(event, notionClient, openaiClient, lineClient);
           
           console.log('✅ Message processed successfully');
         } else {
@@ -231,7 +245,7 @@ app.use((error, req, res, next) => {
   }
 });
 
-// Typebot Webhook エンドポイント（完全修正版）
+// Typebot Webhook エンドポイント（最終修正版）
 app.post('/webhook/typebot', async (req, res) => {
   console.log('📪 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
   
@@ -244,7 +258,9 @@ app.post('/webhook/typebot', async (req, res) => {
       userId = process.env.TEST_USER_ID_1 || "demo_user_for_typebot";
     }
     
-    console.log('👤 使用するユーザーID:', userId.substring(0, 8) + '...');
+    // ユーザーIDが存在しない場合でも、`substring`の代わりに`slice`を使用し、エラーを回避
+    const shortUserId = (typeof userId === 'string' && userId.length > 8) ? userId.slice(0, 8) + '...' : userId;
+    console.log('👤 使用するユーザーID:', shortUserId);
     
     if (!answers || Object.keys(answers).length === 0) {
       throw new Error('観照の回答データが見つかりません');
@@ -280,11 +296,11 @@ app.post('/webhook/typebot', async (req, res) => {
     // 観照分析実行
     console.log('🧠 観照分析を開始...');
     
+    // Notionクライアントを引数に追加
     const analysisResult = await processSessionAnswers(
       answersArray, 
       openaiClient, 
       supabaseClient,
-      lineClient,
       userId,
       observationResult
     );
@@ -305,7 +321,7 @@ app.post('/webhook/typebot', async (req, res) => {
       
       const pushResult = await lineClient.pushMessage(userId, resultMessage);
       console.log('📱 LINE送信結果:', pushResult);
-      console.log('✅ LINE通知完了 - ユーザー:', userId.substring(0, 8) + '...');
+      console.log('✅ LINE通知完了 - ユーザー:', shortUserId);
     } catch (lineError) {
       console.error('❌ LINE送信エラー詳細:', {
         message: lineError.message,
