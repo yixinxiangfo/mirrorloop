@@ -283,26 +283,37 @@ app.post('/webhook/typebot', async (req, res) => {
     const analysisResult = await processSessionAnswers(
       answersArray, 
       openaiClient, 
-      supabaseClient, // ここでsupabaseClientを渡します
-      lineClient, // lineClientを追加
+      supabaseClient,
+      lineClient,
       userId,
       observationResult
     );
     
     console.log('✅ 観照分析完了:', analysisResult);
     
-    // 分析結果をLINEで送信
+    // 分析結果をLINEで送信（デバッグ強化版）
     try {
+      console.log('📱 LINE送信準備中...');
+      console.log('📱 送信先ユーザーID:', userId);
+      console.log('📱 送信メッセージ長:', analysisResult.comment?.length);
+      console.log('📱 LINEクライアント状態:', !!lineClient);
+      
       const resultMessage = {
         type: 'text',
         text: analysisResult.comment
       };
       
-      await lineClient.pushMessage(userId, resultMessage);
-      console.log('📱 LINE通知完了 - ユーザー:', userId.substring(0, 8) + '...');
+      const pushResult = await lineClient.pushMessage(userId, resultMessage);
+      console.log('📱 LINE送信結果:', pushResult);
+      console.log('✅ LINE通知完了 - ユーザー:', userId.substring(0, 8) + '...');
     } catch (lineError) {
-      console.error('❌ LINE送信エラー:', lineError.message);
-      throw new Error('LINE送信に失敗しました');
+      console.error('❌ LINE送信エラー詳細:', {
+        message: lineError.message,
+        stack: lineError.stack,
+        userId: userId,
+        hasLineClient: !!lineClient
+      });
+      throw new Error(`LINE送信に失敗: ${lineError.message}`);
     }
     
     res.json({ 
