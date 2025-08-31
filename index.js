@@ -2,7 +2,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const line = require('@line/bot-sdk');
-const { Client } = require('@notionhq/client');
 const { OpenAI } = require('openai');
 const { sessionMessageHandler } = require('./sessionMessageHandler');
 
@@ -22,9 +21,9 @@ try {
 const requiredEnvVars = [
   'LINE_CHANNEL_ACCESS_TOKEN',
   'LINE_CHANNEL_SECRET',
-  'NOTION_TOKEN',
   'OPENAI_API_KEY',
-  'NOTION_DATABASE_ID'
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY'
 ];
 
 const missingEnvVars = [];
@@ -46,7 +45,6 @@ if (missingCritical.length > 0) {
 
 // 各クライアントの安全な初期化
 let lineClient = null;
-let notionClient = null;
 let openaiClient = null;
 
 try {
@@ -63,21 +61,21 @@ try {
 }
 
 try {
-  if (process.env.NOTION_TOKEN) {
-    notionClient = new Client({ auth: process.env.NOTION_TOKEN });
-    console.log('✅ Notion client initialized');
-  }
-} catch (error) {
-  console.error('❌ Notion client initialization failed:', error.message);
-}
-
-try {
   if (process.env.OPENAI_API_KEY) {
     openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     console.log('✅ OpenAI client initialized');
   }
 } catch (error) {
   console.error('❌ OpenAI client initialization failed:', error.message);
+}
+
+// Supabaseクライアントの初期化確認
+let supabaseClient = null;
+try {
+  supabaseClient = require('./supabaseClient');
+  console.log('✅ Supabase client initialized');
+} catch (error) {
+  console.error('❌ Supabase client initialization failed:', error.message);
 }
 
 const app = express();
@@ -110,14 +108,14 @@ app.get('/health', (req, res) => {
     env_check: {
       hasLineToken: !!process.env.LINE_CHANNEL_ACCESS_TOKEN,
       hasLineSecret: !!process.env.LINE_CHANNEL_SECRET,
-      hasNotionToken: !!process.env.NOTION_TOKEN,
       hasOpenAIKey: !!process.env.OPENAI_API_KEY,
-      hasNotionDB: !!process.env.NOTION_DATABASE_ID
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
     },
     clients: {
       lineInitialized: !!lineClient,
-      notionInitialized: !!notionClient,
-      openaiInitialized: !!openaiClient
+      openaiInitialized: !!openaiClient,
+      supabaseInitialized: !!supabaseClient
     },
     missingEnvVars: missingEnvVars,
     webhookModule: !!processSessionAnswers
@@ -158,7 +156,7 @@ app.post('/', async (req, res) => {
           console.log('👤 User ID:', event.source.userId);
           
           // 必要なクライアントが揃っているかチェック
-          if (!notionClient || !openaiClient) {
+          if (!openaiClient) {
             console.error('❌ Required clients not initialized');
             await lineClient.replyMessage(event.replyToken, {
               type: 'text',
@@ -167,8 +165,8 @@ app.post('/', async (req, res) => {
             continue;
           }
           
-          // セッションメッセージハンドラーを呼び出し
-          await sessionMessageHandler(event, notionClient, openaiClient, lineClient);
+          // セッションメッセージハンドラーを呼び出し（Notion削除）
+          await sessionMessageHandler(event, null, openaiClient, lineClient);
           
           console.log('✅ Message processed successfully');
         } else {
@@ -230,9 +228,9 @@ app.use((error, req, res, next) => {
   }
 });
 
-// Typebot Webhook エンドポイント（TypebotのOpenAI結果取得対応版）
+// Typebot Webhook エンドポイント（修正版）
 app.post('/webhook/typebot', async (req, res) => {
-  console.log('🪝 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
+  console.log('📪 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
   
   try {
     const { userId, sessionId, answers, observationResult } = req.body;
@@ -251,7 +249,7 @@ app.post('/webhook/typebot', async (req, res) => {
     console.log('👤 ユーザーID:', userId);
     
     // 必要なクライアントの確認
-    if (!lineClient || !notionClient || !openaiClient) {
+    if (!lineClient || !openaiClient) {
       throw new Error('必要なクライアントが初期化されていません');
     }
     
@@ -269,26 +267,26 @@ app.post('/webhook/typebot', async (req, res) => {
       }
     }
     
-    console.log('🔄 変換された回答配列:', answersArray);
+    console.log('📄 変換された回答配列:', answersArray);
     
     if (answersArray.length === 0) {
       throw new Error('有効な回答が見つかりませんでした');
     }
     
-    // 観照分析実行（TypebotのOpenAI結果を含む）
+    // 観照分析実行（Notion削除、Supabase対応）
     console.log('🧠 観照分析を開始...');
     
     const analysisResult = await processSessionAnswers(
       answersArray, 
       openaiClient, 
-      notionClient, 
+      null,  // notionClient を削除
       userId,
       observationResult  // TypebotのOpenAI結果を渡す
     );
     
     console.log('✅ 観照分析完了:', analysisResult);
     
-    // 分析結果をLINEで通知（錯覚倍率削除）
+    // 分析結果をLINEで通知
     const resultMessage = {
       type: 'text',
       text: `✨ 観照の結果をお伝えします\n\n${analysisResult.comment}`
@@ -356,8 +354,8 @@ app.get('/webhook/typebot/health', (req, res) => {
     environment: process.env.NODE_ENV || 'production',
     clients: {
       lineInitialized: !!lineClient,
-      notionInitialized: !!notionClient,
-      openaiInitialized: !!openaiClient
+      openaiInitialized: !!openaiClient,
+      supabaseInitialized: !!supabaseClient
     },
     modules: {
       processSessionAnswersLoaded: !!processSessionAnswers
@@ -371,12 +369,12 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📱 LINE Webhook URL: https://mirrorloop.onrender.com/`);
-  console.log(`🔄 KeepAlive URL: https://mirrorloop.onrender.com/keepalive`);
-  console.log(`🪝 Typebot Webhook URL: https://mirrorloop.onrender.com/webhook/typebot`);
+  console.log(`📄 KeepAlive URL: https://mirrorloop.onrender.com/keepalive`);
+  console.log(`📪 Typebot Webhook URL: https://mirrorloop.onrender.com/webhook/typebot`);
   console.log('🔧 Initialization status:', {
     lineClient: !!lineClient,
-    notionClient: !!notionClient,
     openaiClient: !!openaiClient,
+    supabaseClient: !!supabaseClient,
     missingEnvVars: missingEnvVars.length,
     webhookModule: !!processSessionAnswers
   });
