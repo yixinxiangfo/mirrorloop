@@ -4,6 +4,7 @@ const questions = require('./questions');
 const { replyMessages, pushText } = require('./lineUtils');
 const processSessionAnswers = require('./processSessionAnswers');
 const { handleTypebotFlow } = require('./typebotHandler'); // ← 追加
+const { validateSessionAccess } = require('./usageLimiterEnhanced'); // ← 追加
 
 // セッションタイマー管理
 const sessionTimeouts = {}; // userId -> timeoutID
@@ -73,7 +74,25 @@ async function sessionMessageHandler(event, notionClient, openaiClient, lineClie
     
     // 新規セッション開始
     if (!session && text !== '') {
-      console.log('🆕 Creating new session for user:', userIdShort);
+      console.log('🆕 Attempting to create new session for user:', userIdShort);
+      
+      // 使用制限チェック
+      const accessValidation = await validateSessionAccess(userId);
+      
+      if (!accessValidation.canProceed) {
+        console.log('🚫 Session blocked due to usage limit:', userIdShort);
+        await replyMessages(lineClient, event.replyToken, [
+          accessValidation.message
+        ]);
+        return;
+      }
+      
+      if (accessValidation.isTestAccount) {
+        console.log('✅ Test account detected - unlimited access:', userIdShort);
+      } else {
+        console.log('✅ Usage limit check passed:', accessValidation.usageInfo);
+      }
+      
       createSession(userId);
       session = getSession(userId);
       console.log('✅ New session created:', {
