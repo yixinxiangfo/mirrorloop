@@ -119,8 +119,9 @@ app.get('/health', (req, res) => {
       openaiInitialized: !!openaiClient,
       supabaseInitialized: !!supabaseClient
     },
-    missingEnvVars: missingEnvVars,
-    webhookModule: !!processSessionAnswers
+    modules: {
+      processSessionAnswersLoaded: !!processSessionAnswers
+    }
   });
 });
 
@@ -230,17 +231,17 @@ app.use((error, req, res, next) => {
   }
 });
 
-// Typebot Webhook エンドポイント（userId問題対応版）
+// Typebot Webhook エンドポイント（完全修正版）
 app.post('/webhook/typebot', async (req, res) => {
   console.log('📪 Typebot Webhook受信:', JSON.stringify(req.body, null, 2));
   
   try {
     let { userId, sessionId, answers, observationResult } = req.body;
     
-    // userIdの問題を解決: {{userId}}のまま送信されている場合の対処
+    // userIdの問題を解決
     if (!userId || userId === "{{userId}}" || userId.includes("{{")) {
-      console.warn('⚠️ userId が正しく設定されていません。デモ用の固定IDを使用します');
-      userId = process.env.TEST_USER_ID_1 || "demo_user_for_typebot"; // テストアカウントを使用
+      console.warn('⚠️ userId が正しく設定されていません。テストアカウントを使用します');
+      userId = process.env.TEST_USER_ID_1 || "demo_user_for_typebot";
     }
     
     console.log('👤 使用するユーザーID:', userId.substring(0, 8) + '...');
@@ -252,7 +253,16 @@ app.post('/webhook/typebot', async (req, res) => {
     console.log('📝 観照回答データ:', answers);
     console.log('🎯 TypebotのOpenAI結果:', observationResult);
     
-    // 既存のコードと同じ...
+    // 必要なクライアントの確認
+    if (!lineClient || !openaiClient) {
+      throw new Error('必要なクライアントが初期化されていません');
+    }
+    
+    if (!processSessionAnswers) {
+      throw new Error('観照分析機能が利用できません');
+    }
+    
+    // 回答データを配列形式に変換
     const answersArray = [];
     for (let i = 1; i <= 9; i++) {
       const answerKey = `answer${i}`;
@@ -261,34 +271,67 @@ app.post('/webhook/typebot', async (req, res) => {
       }
     }
     
-    if (!processSessionAnswers) {
-      throw new Error('観照分析機能が利用できません');
+    console.log('📄 変換された回答配列:', answersArray);
+    
+    if (answersArray.length === 0) {
+      throw new Error('有効な回答が見つかりませんでした');
     }
+    
+    // 観照分析実行
+    console.log('🧠 観照分析を開始...');
     
     const analysisResult = await processSessionAnswers(
       answersArray, 
       openaiClient, 
-      supabaseClient, // supabaseClientを追加
+      supabaseClient, // ここでsupabaseClientを渡します
+      lineClient, // lineClientを追加
       userId,
       observationResult
     );
     
     console.log('✅ 観照分析完了:', analysisResult);
     
-    // LINEには送信せず、ログのみ（デモ対応）
-    console.log('📱 分析結果（デモモード）:', analysisResult.comment);
+    // 分析結果をLINEで送信
+    try {
+      const resultMessage = {
+        type: 'text',
+        text: analysisResult.comment
+      };
+      
+      await lineClient.pushMessage(userId, resultMessage);
+      console.log('📱 LINE通知完了 - ユーザー:', userId.substring(0, 8) + '...');
+    } catch (lineError) {
+      console.error('❌ LINE送信エラー:', lineError.message);
+      throw new Error('LINE送信に失敗しました');
+    }
     
     res.json({ 
       success: true, 
-      message: '観照分析が正常に完了しました（デモモード）',
+      message: '観照分析が正常に完了し、LINEに送信しました',
       sessionId: sessionId,
-      analysisResult: analysisResult
+      analysisResult: {
+        processedAnswers: answersArray.length,
+        commentSent: true
+      }
     });
     
   } catch (error) {
     console.error('❌ Webhook処理エラー:', error);
+    
+    try {
+      if (req.body.userId && lineClient && req.body.userId !== "{{userId}}") {
+        await lineClient.pushMessage(req.body.userId, {
+          type: 'text',
+          text: '申し訳ございません。観照分析中に問題が発生しました。'
+        });
+      }
+    } catch (lineError) {
+      console.error('❌ エラー通知送信失敗:', lineError.message);
+    }
+    
     res.status(500).json({ 
       error: error.message,
+      details: 'Webhook処理に失敗しました',
       timestamp: new Date().toISOString()
     });
   }
