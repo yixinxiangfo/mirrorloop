@@ -10,6 +10,42 @@ MIRRORLOOP doesn't answer your questions – it **reflects back why you asked th
 
 This is not an optimization tool. It's an instrument for recognizing **why** you want to optimize in the first place.
 
+## 📱 Real System in Action
+
+### LINE Bot Contemplation Session
+![MIRRORLOOP Welcome](screenshots/mirrorloop-line-1.png)
+*MIRRORLOOP introduction and contemplation session invitation - showing the warm, Buddhist-inspired interface*
+
+![Contemplation Analysis](screenshots/mirrorloop-line-2.png)
+*Real-time mind state analysis: The AI detects patterns of anxiety, self-criticism, and restlessness using Buddhist psychology*
+
+![Deep Questions](screenshots/mirrorloop-line-3.png)
+*9-question contemplation flow exploring physical sensations, thoughts, and emotional responses*
+
+![Session Start](screenshots/mirrorloop-line-4.png)
+*Beginning of contemplation session - users are gently guided through self-reflection*
+
+### Key Features Demonstrated:
+- **🧘 Gentle Questioning**: Non-judgmental exploration of mental states
+- **🔍 Pattern Detection**: AI identifies underlying emotions (anxiety, self-criticism, restlessness)
+- **💬 Natural Flow**: Seamless LINE Bot interface with thoughtful responses
+- **📊 Mind State Analysis**: Real-time categorization using Buddhist psychology
+- **🌸 Compassionate Tone**: Supportive guidance rather than cold analysis
+
+---
+
+## 🎯 Live Interactive Demo
+
+**👉 [Try MIRRORLOOP Simulator](https://yixinxiangfo.github.io/mirrorloop/) - No installation required!**
+
+Experience a simulated contemplation session that demonstrates:
+- ✨ Interactive 9-question session
+- 🧠 Real-time mind state analysis  
+- 📱 Mobile-friendly interface
+- 🔄 Repeatable experience for judges
+
+*This HTML simulator replicates the actual LINE Bot experience shown above*
+
 ## Key Features
 
 ### Core Analysis Engine
