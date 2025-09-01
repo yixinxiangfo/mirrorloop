@@ -9,22 +9,53 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #e5e7eb;
+            background-color: #ffffff;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
+            padding: 1rem;
+            margin: 0;
+        }
+        .demo-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
         }
         .line-mockup {
             width: 100%;
             max-width: 400px;
-            height: 90vh;
+            height: 80vh;
             display: flex;
             flex-direction: column;
             border-radius: 2rem;
             box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
             overflow: hidden;
             background-color: #fff;
+            flex-shrink: 0;
+        }
+        .subtitle-panel {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .subtitle-panel h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .subtitle-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
         }
         .header {
             background-color: #06c755;
@@ -70,30 +101,6 @@
         .hidden {
             display: none;
         }
-        .subtitle-area {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            text-align: center;
-            color: white;
-            font-size: 1rem;
-            padding: 0.5rem;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: 10;
-            box-sizing: border-box;
-            white-space: pre-wrap;
-        }
-        .api-note {
-            font-size: 0.75rem;
-            color: #666;
-            margin-top: -0.5rem;
-            margin-bottom: 0.5rem;
-            align-self: flex-start;
-            text-align: left;
-            padding: 0.75rem 1rem;
-            max-width: 80%;
-        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -101,54 +108,118 @@
         .fade-in {
             animation: fadeIn 0.5s ease-out;
         }
+        .intro-text {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #065f46;
+        }
+        .intro-text h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #10b981 0%, #065f46 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .intro-text p {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        .github-link {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background-color: #065f46;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s;
+        }
+        .github-link:hover {
+            background-color: #047857;
+        }
+        @media (max-width: 768px) {
+            .demo-container {
+                flex-direction: column;
+            }
+            .subtitle-panel {
+                min-width: unset;
+                width: 100%;
+                max-width: 400px;
+                order: -1;
+            }
+            .intro-text h1 {
+                font-size: 2rem;
+            }
+            body {
+                padding: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-200">
-    <div class="line-mockup">
-        <div class="header">
-            MIRRORLOOP
+    <div class="intro-text">
+        <h1>MIRRORLOOP</h1>
+        <p>Buddhist-inspired AI contemplation system</p>
+        <p><em>"An AI that reflects your mind, not your questions"</em></p>
+        <a href="https://github.com/yixinxiangfo/mirrorloop" class="github-link" target="_blank">
+            View Source Code →
+        </a>
+    </div>
+
+    <div class="demo-container">
+        <div class="line-mockup">
+            <div class="header">
+                MIRRORLOOP
+            </div>
+            <div class="chat-area" id="chat-area">
+                <!-- Messages will be inserted here -->
+            </div>
+            <div class="input-area hidden" id="input-area">
+                <!-- Buttons are removed -->
+            </div>
         </div>
-        <div class="chat-area" id="chat-area">
-            <!-- Messages will be inserted here -->
-        </div>
-        <div class="input-area hidden" id="input-area">
-            <!-- Buttons are removed -->
-        </div>
-        <div class="subtitle-area" id="subtitle-area">
-            <!-- Subtitles will be displayed here -->
+        
+        <div class="subtitle-panel">
+            <h2>English Translation</h2>
+            <div class="subtitle-text" id="subtitle-text">
+                Welcome to MIRRORLOOP. An AI based on Buddhist philosophy to reflect your mind.
+            </div>
         </div>
     </div>
 
     <script>
         const chatArea = document.getElementById('chat-area');
-        const subtitleArea = document.getElementById('subtitle-area');
+        const subtitleText = document.getElementById('subtitle-text');
 
         // Demo script with Japanese and English subtitles
         const script = [
-            { sender: 'bot', text: '🪞 MIRRORLOOPへようこそ。\n\n仏教の唯識をベースにした、あなたの心を映し返すAIです。自分の心と向き合う「観照セッション」ができます。\n\nこのAIは開発中でみなさんのお声を聞きながら育てていきたいと思っています。現在β版のため無料ですが、段階的に有料化する予定です。\n\n自分の心に向き合いたいなら、「観照セッション」をはじめてみてください。途中でやめられます。', subtitle: 'Welcome to MIRRORLOOP. An AI based on Buddhist philosophy to reflect your mind.' },
-            { sender: 'user', text: '観照セッション', subtitle: 'Observation Session' },
-            { sender: 'bot', text: '🧘‍♀️ 観照セッションについて\n\nこれから9つの問いを通じて、あなたの心の状態をAIが仏教の唯識思想に基づき気づきのコメントを返します。（所要時間：約10-15分）\n\n心の準備はいかがですか？', subtitle: 'Through 9 questions, the AI provides insights based on the Buddhist concept of Yogacara.' },
+            { sender: 'bot', text: '🪞 MIRRORLOOPへようこそ。\n\n仏教の唯識をベースにした、あなたの心を映し返すAIです。自分の心と向き合う「観照セッション」ができます。\n\nこのAIは開発中でみなさんのお声を聞きながら育てていきたいと思っています。現在β版のため無料ですが、段階的に有料化する予定です。\n\n自分の心に向き合いたいなら、「観照セッション」をはじめてみてください。途中でやめられます。', subtitle: 'Welcome to MIRRORLOOP. An AI based on Buddhist philosophy that reflects your mind. You can start a contemplation session to face your inner self.' },
+            { sender: 'user', text: '観照セッション', subtitle: 'Contemplation Session' },
+            { sender: 'bot', text: '🧘‍♀️ 観照セッションについて\n\nこれから9つの問いを通じて、あなたの心の状態をAIが仏教の唯識思想に基づき気づきのコメントを返します。（所要時間：約10-15分）\n\n心の準備はいかがですか？', subtitle: 'About the Contemplation Session:\n\nThrough 9 questions, the AI will provide insights based on Buddhist Yogacara philosophy (Duration: 10-15 minutes).\n\nAre you ready?' },
             { sender: 'user', text: 'はい、始めます', subtitle: 'Yes, let\'s start.' },
-            { sender: 'bot', text: '🌟 観照セッション開始\n\nそれでは始めましょう。これから9つの問いを投げかけます。\n\n今日は、どんな出来事がありましたか？できるだけ詳しく教えてください。', subtitle: 'Let\'s begin. Please tell me about a recent event that\'s on your mind.' },
-            { sender: 'user', text: 'プロジェクトの締切が迫っているのに、なかなか集中できずに焦りを感じていました', subtitle: 'The project deadline is approaching, and I feel anxious because I can\'t concentrate.' },
-            { sender: 'bot', text: 'そのとき、あなたはどんな感情がわきましたか？怒り、不安、喜び、悲しみなど、率直にどうぞ。', subtitle: 'What emotions did you feel at that moment? Please be honest about your anger, anxiety, joy, etc.' },
+            { sender: 'bot', text: '🌟 観照セッション開始\n\nそれでは始めましょう。これから9つの問いを投げかけます。\n\n今日は、どんな出来事がありましたか？できるだけ詳しく教えてください。', subtitle: 'Contemplation Session Begin\n\nLet\'s start. I will ask you 9 questions.\n\nWhat happened today? Please tell me in detail.' },
+            { sender: 'user', text: 'プロジェクトの締切が迫っているのに、なかなか集中できずに焦りを感じていました', subtitle: 'The project deadline is approaching, but I couldn\'t concentrate and felt anxious.' },
+            { sender: 'bot', text: 'そのとき、あなたはどんな感情がわきましたか？怒り、不安、喜び、悲しみなど、率直にどうぞ。', subtitle: 'What emotions did you feel at that moment? Anger, anxiety, joy, sadness - please be honest.' },
             { sender: 'user', text: '不安と焦り、そして自分への苛立ちがありました', subtitle: 'I felt anxiety, impatience, and irritation towards myself.' },
-            { sender: 'bot', text: 'そのとき、体にはどんな感覚がありましたか？胸のざわつき、肩のこわばり、震えなど、身体の反応に目を向けてみましょう。', subtitle: 'What physical sensations did you experience? Focus on your body\'s reactions.' },
-            { sender: 'user', text: '胸がざわざわして、肩に力が入っていました', subtitle: 'My chest was fluttering, and my shoulders felt tense.' },
-            { sender: 'bot', text: '頭の中では、どんな思考が浮かんでいましたか？ぐるぐる回っていた言葉やイメージがあれば、それも含めて教えてください。', subtitle: 'What thoughts were going through your mind? Tell me about any words or images that were repeating.' },
-            { sender: 'user', text: '時間がない、やばい、どうしよう、という言葉が頭の中をぐるぐる回っていました', subtitle: 'Words like "no time," "this is bad," and "what should I do" were swirling in my head.' },
-            { sender: 'bot', text: 'その出来事について、相手や状況に対してどんな評価や判断をしていましたか？', subtitle: 'What judgments or evaluations did you have about the situation or others involved?' },
-            { sender: 'user', text: 'スケジュール管理ができていない、準備不足だと思いました', subtitle: 'I thought I had poor time management and was unprepared.' },
-            { sender: 'bot', text: 'また、自分自身に対してはどんな評価や思いがありましたか？責めたり、情けなく感じたり、あるいは正当化しようとしたかもしれません。', subtitle: 'What thoughts or evaluations did you have about yourself? Did you blame yourself or feel pathetic?' },
-            { sender: 'user', text: 'だらしない、計画性がないと自分を責めました', subtitle: 'I blamed myself, thinking I was sloppy and lacked a plan.' },
-            { sender: 'bot', text: 'そうした評価の背後には、どんな思い込みや前提があったように思いますか？「〜べき」「〜でなければならない」など、気づいているものがあれば。', subtitle: 'What assumptions or beliefs were behind those judgments? If you\'re aware of any "shoulds" or "musts," please share.' },
-            { sender: 'user', text: '完璧にやらなければならない、失敗してはいけない、という思い込みがありました', subtitle: 'I had the belief that I must be perfect and must not fail.' },
-            { sender: 'bot', text: '本当は、あなたはどうしたかったのでしょうか？その場で、どんなことを願っていたのか、心の奥を見つめてみてください。', subtitle: 'What did you truly want to do? Look deep into your heart for your genuine wish in that moment.' },
-            { sender: 'user', text: '落ち着いて、一つずつ丁寧に取り組めたかった', subtitle: 'I wanted to calm down and work on each task carefully.' },
-            { sender: 'bot', text: '今この瞬間、どんな願いや方向性が心にありますか？すぐにできる小さな一歩でも構いません。', subtitle: 'What desires or directions are in your heart right now? Even a small, immediate step is fine.' },
-            { sender: 'user', text: 'まず深呼吸をして、優先順位をつけて進めていこうと思います', subtitle: 'I think I\'ll start by taking a deep breath and prioritizing my tasks.' },
-            { sender: 'bot', text: '観照が完了しました。あなたの回答から、観照コメントと分析結果をまとめました。\n\n【観照コメント】\n心の焦りや不安が揺れ動いています。自分を責めず、静かな呼吸を取り戻せますか？\n\n検出された心の状態：掉挙、悩、悔、慢\n分類：随煩悩、随煩悩、不定心所、根本煩悩', subtitle: 'Observation complete. Here is the observation and analysis based on your answers. Your anxiety is fluctuating. Can you take a moment and just breathe without judging yourself?' },
-            { sender: 'bot', text: 'データが正常に保存されました。\n\nありがとうございました。また心を見つめたいときにお声がけください。', subtitle: 'The data has been saved successfully.\n\nThank you. Please reach out again whenever you want to reflect on your mind.'}
+            { sender: 'bot', text: 'そのとき、体にはどんな感覚がありましたか？胸のざわつき、肩のこわばり、震えなど、身体の反応に目を向けてみましょう。', subtitle: 'What physical sensations did you experience? Chest fluttering, shoulder tension, trembling - let\'s focus on your body\'s reactions.' },
+            { sender: 'user', text: '胸がざわざわして、肩に力が入っていました', subtitle: 'My chest felt restless, and my shoulders were tense.' },
+            { sender: 'bot', text: '頭の中では、どんな思考が浮かんでいましたか？くるくる回っていた言葉やイメージがあれば、それも含めて教えてください。', subtitle: 'What thoughts were going through your mind? If there were any words or images spinning around, please include those.' },
+            { sender: 'user', text: '時間がない、やばい、どうしよう、という言葉が頭の中をくるくる回っていました', subtitle: 'Words like "no time," "this is bad," "what should I do" were spinning in my head.' },
+            { sender: 'bot', text: 'その出来事について、相手や状況に対してどんな評価や判断をしていましたか？', subtitle: 'What evaluations or judgments did you make about the situation or others involved?' },
+            { sender: 'user', text: 'スケジュール管理ができていない、準備不足だと思いました', subtitle: 'I thought I had poor schedule management and was unprepared.' },
+            { sender: 'bot', text: 'また、自分自身に対してはどんな評価や思いがありましたか？責めたり、情けなく感じたり、あるいは正当化しようとしたかもしれません。', subtitle: 'What evaluations or thoughts did you have about yourself? You might have blamed yourself, felt pathetic, or tried to justify.' },
+            { sender: 'user', text: 'だらしない、計画性がないと自分を責めました', subtitle: 'I blamed myself for being sloppy and lacking planning.' },
+            { sender: 'bot', text: 'そうした評価の背後には、どんな思い込みや前提があったように思いますか？「～べき」「～でなければならない」など、気づいているものがあれば。', subtitle: 'What assumptions or beliefs were behind those evaluations? Any "shoulds" or "musts" you\'re aware of?' },
+            { sender: 'user', text: '完璧にやらなければならない、失敗してはいけない、という思い込みがありました', subtitle: 'I had beliefs like "I must be perfect" and "I must not fail."' },
+            { sender: 'bot', text: '本当は、あなたはどうしたかったのでしょうか？その場で、どんなことを願っていたのか、心の奥を見つめてみてください。', subtitle: 'What did you truly want to do? Look deep into your heart - what were you wishing for in that moment?' },
+            { sender: 'user', text: '落ち着いて、一つずつ丁寧に取り組みたかった', subtitle: 'I wanted to calm down and work on things carefully, one by one.' },
+            { sender: 'bot', text: '今この瞬間、どんな願いや方向性が心にありますか？すぐにできる小さな一歩でも構いません。', subtitle: 'What wishes or directions are in your heart right now? Even a small step you can take immediately is fine.' },
+            { sender: 'user', text: 'まず深呼吸をして、優先順位をつけて進めていこうと思います', subtitle: 'I think I\'ll first take a deep breath and proceed by setting priorities.' },
+            { sender: 'bot', text: '観照が完了しました。あなたの回答から、観照コメントと分析結果をまとめました。\n\n【観照コメント】\n心の焦りや不安が揺れ動いています。自分を責めず、静かな呼吸を取り戻せますか？\n\n検出された心の状態：掉挙、悩、悔、慢\n分類：随煩悩、随煩悩、不定心所、根本煩悩', subtitle: 'Contemplation completed. Based on your answers, here are the observation comments and analysis:\n\n[Observation Comment]\nYour mind is fluctuating with anxiety and restlessness. Can you restore calm breathing without self-blame?\n\nDetected mental states: Restlessness, worry, regret, pride\nCategories: Secondary afflictions, indefinite mental factors, root afflictions' },
+            { sender: 'bot', text: '※ この分析は仏教の唯識思想に基づく51心所の分類システムを使用しています。検出された心の状態は、あなたの内面を理解する手がかりとしてご活用ください。', subtitle: '※ This analysis uses the 51 mental factors classification system based on Buddhist Yogacara philosophy. The detected mental states can be used as clues to understand your inner self.', isNote: true },
+            { sender: 'bot', text: 'データが正常に保存されました。\n\nありがとうございました。また心を見つめたいときにお声がけください。', subtitle: 'Data has been saved successfully.\n\nThank you. Please reach out again when you want to reflect on your mind.' }
         ];
 
         let currentStep = 0;
@@ -157,6 +228,15 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message fade-in ${messageData.sender}`;
             messageDiv.innerText = messageData.text;
+            
+            // Add special styling for note messages
+            if (messageData.isNote) {
+                messageDiv.style.fontSize = '0.85rem';
+                messageDiv.style.fontStyle = 'italic';
+                messageDiv.style.backgroundColor = '#f0f9ff';
+                messageDiv.style.border = '1px solid #0ea5e9';
+            }
+            
             return messageDiv;
         }
 
@@ -168,7 +248,7 @@
                 chatArea.scrollTop = chatArea.scrollHeight;
 
                 // Update subtitle
-                subtitleArea.innerText = messageData.subtitle;
+                subtitleText.innerText = messageData.subtitle;
 
                 currentStep++;
             }
