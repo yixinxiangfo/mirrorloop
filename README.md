@@ -10,6 +10,33 @@ MIRRORLOOP doesn't answer your questions – it **reflects back why you asked th
 
 This is not an optimization tool. It's an instrument for recognizing **why** you want to optimize in the first place.
 
+### 🔴 Experience the Live System
+
+### LINE Official Account (Main Interface)
+**[Add MIRRORLOOP LINE Bot](https://line.me/R/ti/p/@251ypxtr) - Experience the actual contemplation system!**
+
+⚠️ **Note: The LINE Bot interface is currently Japanese-only**
+
+**QR Code for mobile users:**
+![MIRRORLOOP LINE Bot QR Code](screenshots/mirrorloop-qr-code.png)
+
+The LINE Bot provides the complete MIRRORLOOP experience:
+- ✨ Full 9-question contemplation sessions guided by Typebot
+- 🧠 Real-time Buddhist psychology analysis using OpenAI GPT-4o
+- 💾 Data persistence to Supabase database for pattern tracking
+- 📱 Natural mobile conversation interface optimized for contemplation
+- 🌸 Warm, supportive tone designed for self-reflection
+- 🇯🇵 Interface language: Japanese
+
+*This is the actual production system used for contemplation sessions*
+
+---
+
+## 🌐 Browser Demo (Preview)
+**[Try HTML Simulator](https://yixinxiangfo.github.io/mirrorloop/) - Preview without LINE setup**
+
+*The HTML simulator provides a preview of the contemplation flow for those who prefer browser-based experience*
+
 ## 📱 Real System in Action
 
 ### LINE Bot Contemplation Session
