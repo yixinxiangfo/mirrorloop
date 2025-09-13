@@ -422,3 +422,197 @@ app.listen(PORT, '0.0.0.0', () => {
     console.warn('⚠️ Webhook analysis feature disabled due to module loading error');
   }
 });
+
+// ===== 750時間制限対応追加コード =====
+// 以下のコードを既存のindex.jsの最後に追加してください
+// （既存のコードは一切変更しません）
+
+console.log('🎯 Adding hackathon-safe usage tracking...');
+
+// 使用量トラッキング（既存機能への影響なし）
+let monthlyUsage = {
+  hours: 0,
+  startDate: new Date(),
+  lastKeepAlive: null,
+  totalPings: 0
+};
+
+function resetMonthlyUsage() {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const startMonth = monthlyUsage.startDate.getMonth();
+  
+  if (currentMonth !== startMonth) {
+    const oldUsage = monthlyUsage.hours;
+    monthlyUsage = {
+      hours: 0,
+      startDate: now,
+      lastKeepAlive: null,
+      totalPings: 0
+    };
+    console.log(`📅 Monthly usage reset - Previous: ${oldUsage.toFixed(1)}h`);
+  }
+}
+
+function checkUsageLimit() {
+  resetMonthlyUsage();
+  
+  const HOUR_LIMIT = 700; // 750h - 50h安全マージン
+  const remaining = HOUR_LIMIT - monthlyUsage.hours;
+  
+  let status = 'safe';
+  if (remaining <= 0) status = 'exceeded';
+  else if (remaining < 48) status = 'warning'; // 2日分未満
+  
+  return {
+    used: monthlyUsage.hours,
+    remaining: Math.max(0, remaining),
+    limit: HOUR_LIMIT,
+    status: status,
+    month: new Date().getMonth() + 1
+  };
+}
+
+// 新しい制限付きKeepAliveエンドポイント（既存の /keepalive は保持）
+app.get('/keepalive-limited', (req, res) => {
+  const usage = checkUsageLimit();
+  const now = new Date();
+  const hour = now.getHours();
+  
+  console.log(`🔍 Limited KeepAlive check - Status: ${usage.status}, Used: ${usage.used.toFixed(1)}h`);
+  
+  // 制限超過時の対応
+  if (usage.status === 'exceeded') {
+    console.log('🚫 Usage limit exceeded - Allowing sleep');
+    return res.json({
+      status: 'sleep-allowed',
+      reason: 'Monthly usage limit exceeded',
+      usage: usage,
+      app: 'openai-free',
+      message: 'Switch to Claude版: https://lin.ee/30l9d9x',
+      next_reset: getNextMonthDate()
+    });
+  }
+  
+  // 警告状態での時間制限（深夜1-6時はスリープ）
+  if (usage.status === 'warning' && hour >= 1 && hour <= 6) {
+    console.log('⚠️ Warning usage - Sleep during low-traffic hours (1-6 AM)');
+    return res.json({
+      status: 'sleep-allowed',
+      reason: 'Conserving remaining hours during low-traffic period',
+      usage: usage,
+      app: 'openai-free',
+      message: 'Limited hours remaining - sleeping during 1-6 AM'
+    });
+  }
+  
+  // 通常のKeepAlive実行
+  const hoursToAdd = 0.167; // 10分 = 0.167時間
+  monthlyUsage.hours += hoursToAdd;
+  monthlyUsage.lastKeepAlive = now;
+  monthlyUsage.totalPings += 1;
+  
+  console.log(`✅ Limited KeepAlive success - Total: ${monthlyUsage.hours.toFixed(1)}h/${usage.limit}h`);
+  
+  res.json({
+    status: 'kept-alive',
+    app: 'openai-free',
+    usage: usage,
+    message: `Active - ${usage.remaining.toFixed(1)}h remaining this month`,
+    ping_count: monthlyUsage.totalPings,
+    conservation_mode: usage.status === 'warning'
+  });
+});
+
+// 使用量確認用ダッシュボード
+app.get('/usage-dashboard', (req, res) => {
+  const usage = checkUsageLimit();
+  const now = new Date();
+  
+  res.json({
+    timestamp: now.toISOString(),
+    service: 'openai-free-limited',
+    monthly_usage: usage,
+    daily_projection: {
+      current_day: now.getDate(),
+      daily_average: (usage.used / now.getDate()).toFixed(2),
+      projected_month_total: ((usage.used / now.getDate()) * 30).toFixed(1)
+    },
+    recommendations: getUsageRecommendations(usage),
+    endpoints: {
+      original_keepalive: '/keepalive (preserved for hackathon)',
+      limited_keepalive: '/keepalive-limited (750h limit)',
+      usage_check: '/usage-dashboard'
+    }
+  });
+});
+
+// 推奨事項生成
+function getUsageRecommendations(usage) {
+  const recommendations = [];
+  
+  switch (usage.status) {
+    case 'exceeded':
+      recommendations.push('🚫 OpenAI版は月間制限に達しました');
+      recommendations.push('🤖 Claude版をご利用ください: https://lin.ee/30l9d9x');
+      recommendations.push('📅 来月1日に自動リセットされます');
+      break;
+    case 'warning':
+      recommendations.push('⚠️ 残り時間が少なくなっています');
+      recommendations.push('🌙 深夜1-6時は節約モードです');
+      recommendations.push('🤖 Claude版の併用を推奨します');
+      break;
+    case 'safe':
+      recommendations.push('✅ 正常稼働中です');
+      recommendations.push('📊 使用量は制限内に収まっています');
+      break;
+  }
+  
+  return recommendations;
+}
+
+// 来月1日の日付取得
+function getNextMonthDate() {
+  const next = new Date();
+  next.setMonth(next.getMonth() + 1);
+  next.setDate(1);
+  next.setHours(0, 0, 0, 0);
+  return next.toISOString().slice(0, 10);
+}
+
+// サービス状態比較（両版の状況）
+app.get('/service-comparison', (req, res) => {
+  const usage = checkUsageLimit();
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    services: {
+      openai_original: {
+        endpoint: '/keepalive',
+        status: 'preserved-for-hackathon',
+        url: 'https://lin.ee/DetEqmc',
+        description: 'Original endpoint maintained for hackathon stability'
+      },
+      openai_limited: {
+        endpoint: '/keepalive-limited',
+        status: usage.status,
+        available: usage.status !== 'exceeded',
+        remaining_hours: usage.remaining.toFixed(1),
+        description: '750h monthly limit with smart conservation'
+      },
+      claude_unlimited: {
+        endpoint: '/keepalive',
+        status: 'unlimited',
+        available: true,
+        url: 'https://lin.ee/30l9d9x',
+        description: 'Render Pro - 24/7 availability'
+      }
+    },
+    current_recommendation: usage.status === 'exceeded' ? 'claude_unlimited' : 'both_available'
+  });
+});
+
+console.log('✅ Hackathon-safe usage tracking added successfully');
+console.log('📍 Original /keepalive endpoint preserved');
+console.log('📍 New /keepalive-limited endpoint ready');
+console.log('📊 Usage dashboard available at /usage-dashboard');
